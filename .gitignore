@@ -1,0 +1,49 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# next.js
+.next
+out
+build
+next-env.d.ts
+
+# production
+/dist
+
+# misc
+.DS_Store
+*.pem
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env
+.env*.local
+
+# uploads (dev local disk)
+/public/uploads/*
+!/public/uploads/.gitkeep
+
+# generated at install (copied from pdfjs-dist)
+/public/pdf.worker.min.mjs
+
+# prisma local sqlite (if ever used)
+prisma/*.db
+
+# playwright
+/test-results
+/playwright-report
+/playwright/.cache
+
+# editor / os
+.vscode/*
+!.vscode/extensions.json
+.idea
+Thumbs.db
+
+# vercel
+.vercel
