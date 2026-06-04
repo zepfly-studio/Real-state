@@ -7,6 +7,7 @@
     "dev": "next dev",
     "build": "prisma generate && node scripts/copy-pdf-worker.mjs && next build",
     "start": "next start",
+    "start:prod": "node scripts/deploy-start.mjs",
     "lint": "next lint",
     "postinstall": "prisma generate && node scripts/copy-pdf-worker.mjs",
     "db:migrate": "prisma migrate dev",
