@@ -1,229 +1,234 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import {
-  Card,
-  PageHeader,
-  Badge,
-  ConnectBanner,
-  EmptyState,
-} from "@/components/ui";
+import { Card, PageHeader, Badge, ConnectBanner, EmptyState } from "@/components/ui";
 import { Icon } from "@/components/Icon";
 import { timeAgo, initials } from "@/lib/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Priority = "Urgent" | "Important" | "FYI";
-type Action = "Reply" | "Schedule" | "Archive" | "Forward";
-type Category = "Lead Enquiry" | "Vendor" | "Internal" | "Newsletter" | "Legal" | "Finance";
+type DigestSection = "urgent" | "attention" | "fyi";
 
-interface Email {
+interface DigestItem {
   id: string;
-  sender: string;
-  senderEmail: string;
-  subject: string;
-  summary: string;
-  action: Action;
-  category: Category;
-  priority: Priority;
-  receivedAt: string;
-  read: boolean;
-  done?: boolean;
+  section: DigestSection;
+  title: string;
+  context: string; // one-line context string
+  tag: string;
+  tagTone: "red" | "gold" | "blue" | "green" | "purple" | "neutral";
+  href: string;
+  date: string; // ISO string
+  done: boolean;
 }
 
-// ─── Mock inbox ───────────────────────────────────────────────────────────────
+// Types that mirror what page.tsx sends down
+interface LeadRow {
+  id: string;
+  name: string;
+  propertyType: string;
+  location: string;
+  source: string;
+  stage: string;
+  temperature: string;
+  createdAt: string;
+  nextFollowUp: string | null;
+}
 
-const MOCK_EMAILS: Email[] = [
-  {
-    id: "e1",
-    sender: "99acres Lead Alert",
-    senderEmail: "leads@99acres.com",
-    subject: "New Enquiry: 3BHK in Vaishali Nagar — Sunita Rao",
-    summary: "Sunita Rao enquired about a 3BHK flat in Vaishali Nagar, budget ₹65–70L. Requested a callback today. Phone: 9887766554.",
-    action: "Reply",
-    category: "Lead Enquiry",
-    priority: "Urgent",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 18).toISOString(),
-    read: false,
-  },
-  {
-    id: "e2",
-    sender: "MagicBricks Alerts",
-    senderEmail: "noreply@magicbricks.com",
-    subject: "3 new leads matched your listing: Shubh Greens Phase 2",
-    summary: "Three buyer enquiries for Shubh Greens Phase 2 — Amit K. (2BHK, ₹42L), Pradeep S. (3BHK, ₹68L), Kavya M. (Plot, ₹30L). All requested callbacks within 24h.",
-    action: "Reply",
-    category: "Lead Enquiry",
-    priority: "Urgent",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    read: false,
-  },
-  {
-    id: "e3",
-    sender: "Rajasthan RERA",
-    senderEmail: "compliance@rera.rajasthan.gov.in",
-    subject: "Notice: Quarterly Progress Report Due — Project RAJ/P/2024/001",
-    summary: "Quarterly progress report for RERA project RAJ/P/2024/001 is due by 30 June 2026. Submit via the RERA portal. Non-submission attracts ₹10,000/day penalty.",
-    action: "Schedule",
-    category: "Legal",
-    priority: "Urgent",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 3).toISOString(),
-    read: true,
-  },
-  {
-    id: "e4",
-    sender: "Vikram Singh (Buyer)",
-    senderEmail: "vikram.singh@gmail.com",
-    subject: "Re: Shubh Heights B-304 — Loan Sanction Letter Attached",
-    summary: "Vikram has received loan sanction from SBI for ₹48L. Wants to proceed with booking. Requested the agreement draft and bank details for token transfer.",
-    action: "Reply",
-    category: "Lead Enquiry",
-    priority: "Urgent",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 5).toISOString(),
-    read: false,
-  },
-  {
-    id: "e5",
-    sender: "Ramesh Tiles & Fittings",
-    senderEmail: "accounts@rameshtiles.in",
-    subject: "Invoice #RT-2024-0892 — ₹3,42,000 Due on 20 Jun",
-    summary: "Invoice for floor tiles (2,800 sqft) and bathroom fittings for Block B. Amount ₹3,42,000. Due date 20 June 2026. NEFT details attached. GST invoice enclosed.",
-    action: "Schedule",
-    category: "Vendor",
-    priority: "Important",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 7).toISOString(),
-    read: true,
-  },
-  {
-    id: "e6",
-    sender: "Anil Kumar (Site Manager)",
-    senderEmail: "anil.kumar@shubhrealtors.com",
-    subject: "Site Update: Block C slab casting delayed by 3 days — rain",
-    summary: "Block C second floor slab casting postponed to 8 June due to unseasonal rains. Contractor has confirmed revised schedule. No impact on possession date.",
-    action: "Archive",
-    category: "Internal",
-    priority: "Important",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 9).toISOString(),
-    read: true,
-  },
-  {
-    id: "e7",
-    sender: "HDFC Bank — Business",
-    senderEmail: "noreply@hdfcbank.com",
-    subject: "Current Account Statement — May 2026",
-    summary: "Monthly statement for current account ending 4421 for May 2026. Opening balance ₹12.4L, closing ₹8.7L. 34 transactions. Statement PDF attached.",
-    action: "Archive",
-    category: "Finance",
-    priority: "Important",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 11).toISOString(),
-    read: true,
-  },
-  {
-    id: "e8",
-    sender: "Pooja Mehta (Sales)",
-    senderEmail: "pooja.mehta@shubhrealtors.com",
-    subject: "Weekly sales report — week of 27 May",
-    summary: "6 site visits, 2 negotiation calls, 1 booking closed (Rajesh Sharma, 2BHK ₹44L). Pipeline update shared in the CRM. Requesting approval for a site visit incentive.",
-    action: "Reply",
-    category: "Internal",
-    priority: "Important",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 13).toISOString(),
-    read: true,
-  },
-  {
-    id: "e9",
-    sender: "SoftwareSuggest",
-    senderEmail: "digest@softwaresuggest.com",
-    subject: "Top 10 Real Estate CRMs in India 2026 — Weekly Digest",
-    summary: "Curated list of top CRM tools for Indian real estate developers. Includes pricing comparison, feature matrix, and user reviews from JLL, Mahindra Lifespace, and others.",
-    action: "Archive",
-    category: "Newsletter",
-    priority: "FYI",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 16).toISOString(),
-    read: true,
-  },
-  {
-    id: "e10",
-    sender: "PropTech Insider",
-    senderEmail: "news@proptechinsider.in",
-    subject: "PropTech Insider Weekly: RBI rate hold, Jaipur infrastructure boost",
-    summary: "RBI kept repo rate unchanged at 6.5%; Jaipur metro Phase 2 gets Union Budget allocation of ₹1,800Cr boosting real estate along Ajmer Road and Sitapura corridors.",
-    action: "Archive",
-    category: "Newsletter",
-    priority: "FYI",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 18).toISOString(),
-    read: true,
-  },
-  {
-    id: "e11",
-    sender: "Suresh Electricals",
-    senderEmail: "suresh.electricals@gmail.com",
-    subject: "Quotation for Phase 2 electrical wiring — ₹8.4L",
-    summary: "Quotation for complete electrical wiring of Phase 2 (Blocks C & D, 48 units). Total ₹8,40,000. Includes conduits, switchboards, distribution boards. Valid till 30 June.",
-    action: "Reply",
-    category: "Vendor",
-    priority: "Important",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString(),
-    read: true,
-  },
-  {
-    id: "e12",
-    sender: "Google Workspace",
-    senderEmail: "noreply@google.com",
-    subject: "Your storage is 78% full — upgrade your plan",
-    summary: "Google Workspace account shubhrealtors.com is 78% full (14.3 GB of 20 GB used). Consider upgrading to Business Standard for 2 TB per user.",
-    action: "Archive",
-    category: "Internal",
-    priority: "FYI",
-    receivedAt: new Date(Date.now() - 1000 * 60 * 60 * 22).toISOString(),
-    read: true,
-  },
-];
+interface ApprovalRow {
+  id: string;
+  type: string;
+  createdAt: string;
+  note: string | null;
+  lead: { name: string; propertyType: string; location: string } | null;
+  requestedBy: { name: string };
+}
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+interface ActivityRow {
+  id: string;
+  type: string;
+  description: string;
+  createdAt: string;
+  lead: { name: string; propertyType: string; location: string } | null;
+}
 
-const PRIORITY_ORDER: Priority[] = ["Urgent", "Important", "FYI"];
+interface DigestData {
+  recentLeads: LeadRow[];
+  overdueLeads: LeadRow[];
+  todayFollowUps: LeadRow[];
+  pendingApprovals: ApprovalRow[];
+  recentActivities: ActivityRow[];
+}
 
-const PRIORITY_CONFIG: Record<Priority, { icon: string; color: string; tone: "red" | "gold" | "neutral" }> = {
-  Urgent: { icon: "AlertCircle", color: "text-red", tone: "red" },
-  Important: { icon: "Star", color: "text-gold-bright", tone: "gold" },
-  FYI: { icon: "Info", color: "text-txt-faint", tone: "neutral" },
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function sourceLabel(source: string): string {
+  const map: Record<string, string> = {
+    WEBSITE: "Website",
+    REFERRAL: "Referral",
+    WALK_IN: "Walk-in",
+    PORTAL_99ACRES: "99acres",
+    PORTAL_MAGICBRICKS: "MagicBricks",
+    META_ADS: "Meta Ads",
+    GOOGLE_ADS: "Google Ads",
+    CHANNEL_PARTNER: "Channel Partner",
+    COLD_CALL: "Cold Call",
+    WHATSAPP: "WhatsApp",
+  };
+  return map[source] ?? source;
+}
+
+function activityTypeLabel(type: string): string {
+  const map: Record<string, string> = {
+    CALL: "Call",
+    NOTE: "Note",
+    STAGE_CHANGE: "Stage Change",
+    WHATSAPP: "WhatsApp",
+    SITE_VISIT: "Site Visit",
+    EMAIL: "Email",
+  };
+  return map[type] ?? type;
+}
+
+/** Build the flat list of DigestItems from the raw DB data */
+function buildDigest(data: DigestData): DigestItem[] {
+  const items: DigestItem[] = [];
+
+  // URGENT: overdue follow-ups
+  for (const lead of data.overdueLeads) {
+    items.push({
+      id: `overdue-${lead.id}`,
+      section: "urgent",
+      title: `Overdue follow-up: ${lead.name}`,
+      context: `${lead.propertyType} · ${lead.location} · Due ${lead.nextFollowUp ? new Date(lead.nextFollowUp).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}`,
+      tag: "Overdue",
+      tagTone: "red",
+      href: "/crm",
+      date: lead.nextFollowUp ?? lead.createdAt,
+      done: false,
+    });
+  }
+
+  // URGENT: pending approvals
+  for (const approval of data.pendingApprovals) {
+    const leadName = approval.lead?.name ?? "—";
+    items.push({
+      id: `approval-${approval.id}`,
+      section: "urgent",
+      title: `Pending ${approval.type.toLowerCase()} approval${approval.lead ? `: ${leadName}` : ""}`,
+      context: `Requested by ${approval.requestedBy.name}${approval.lead ? ` · ${approval.lead.propertyType} · ${approval.lead.location}` : ""}`,
+      tag: "Approval",
+      tagTone: "red",
+      href: "/crm",
+      date: approval.createdAt,
+      done: false,
+    });
+  }
+
+  // ATTENTION: new leads in last 48h
+  const cutoff48h = Date.now() - 48 * 60 * 60 * 1000;
+  const newLeads48h = data.recentLeads.filter(
+    (l) => new Date(l.createdAt).getTime() >= cutoff48h
+  );
+  for (const lead of newLeads48h) {
+    items.push({
+      id: `new-${lead.id}`,
+      section: "attention",
+      title: `New enquiry: ${lead.name}`,
+      context: `${lead.propertyType} · ${lead.location} · via ${sourceLabel(lead.source)}`,
+      tag: "New Lead",
+      tagTone: "blue",
+      href: "/crm",
+      date: lead.createdAt,
+      done: false,
+    });
+  }
+
+  // ATTENTION: today's follow-ups
+  for (const lead of data.todayFollowUps) {
+    items.push({
+      id: `today-${lead.id}`,
+      section: "attention",
+      title: `Follow-up today: ${lead.name}`,
+      context: `${lead.propertyType} · ${lead.location} · Stage: ${lead.stage.replace(/_/g, " ")}`,
+      tag: "Follow-up",
+      tagTone: "gold",
+      href: "/crm",
+      date: lead.nextFollowUp ?? lead.createdAt,
+      done: false,
+    });
+  }
+
+  // FYI: recent activities
+  for (const act of data.recentActivities) {
+    const leadName = act.lead?.name ?? "Unknown";
+    items.push({
+      id: `act-${act.id}`,
+      section: "fyi",
+      title: `${activityTypeLabel(act.type)}: ${leadName}`,
+      context: act.description.slice(0, 120),
+      tag: activityTypeLabel(act.type),
+      tagTone: "neutral",
+      href: "/crm",
+      date: act.createdAt,
+      done: false,
+    });
+  }
+
+  return items;
+}
+
+// ─── Section config ───────────────────────────────────────────────────────────
+
+const SECTION_CONFIG: Record<DigestSection, { label: string; icon: string; color: string; accent: string }> = {
+  urgent: {
+    label: "Urgent",
+    icon: "AlertCircle",
+    color: "text-red",
+    accent: "bg-[rgba(240,85,106,.14)]",
+  },
+  attention: {
+    label: "Needs Attention",
+    icon: "Bell",
+    color: "text-gold-bright",
+    accent: "bg-gold-soft",
+  },
+  fyi: {
+    label: "FYI",
+    icon: "Info",
+    color: "text-txt-faint",
+    accent: "bg-panel-2",
+  },
 };
 
-const CATEGORY_TONE: Record<Category, "blue" | "purple" | "green" | "neutral" | "red" | "gold"> = {
-  "Lead Enquiry": "blue",
-  "Vendor": "purple",
-  "Internal": "green",
-  "Newsletter": "neutral",
-  "Legal": "red",
-  "Finance": "gold",
-};
-
-const ACTION_CONFIG: Record<Action, { icon: string; label: string; color: string }> = {
-  Reply: { icon: "Reply", label: "Reply", color: "btn-primary" },
-  Schedule: { icon: "Calendar", label: "Schedule", color: "btn-ghost" },
-  Archive: { icon: "Archive", label: "Archive", color: "btn-ghost" },
-  Forward: { icon: "Forward", label: "Forward", color: "btn-ghost" },
+const TAG_TONE_MAP: Record<string, "red" | "gold" | "blue" | "green" | "purple" | "neutral"> = {
+  red: "red",
+  gold: "gold",
+  blue: "blue",
+  green: "green",
+  purple: "purple",
+  neutral: "neutral",
 };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  hasKey: boolean;
+  hasGmail: boolean;
   tenantId: string;
   userName: string;
+  data: DigestData;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function EmailDigestClient({ hasKey, tenantId: _tenantId, userName }: Props) {
-  const [emails, setEmails] = useState<Email[]>(MOCK_EMAILS);
-  const [activeFilter, setActiveFilter] = useState<Priority | "All">("All");
+export function EmailDigestClient({ hasGmail, tenantId: _tenantId, userName, data }: Props) {
+  const [items, setItems] = useState<DigestItem[]>(() => buildDigest(data));
+  const [activeSection, setActiveSection] = useState<DigestSection | "all">("all");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Relative timestamps are client-only — avoids SSR hydration mismatch
   const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []); // relative timestamps are client-only (avoids SSR hydration mismatch)
+  useEffect(() => setMounted(true), []);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -233,11 +238,8 @@ export function EmailDigestClient({ hasKey, tenantId: _tenantId, userName }: Pro
   async function handleRefresh() {
     setRefreshing(true);
     try {
-      const res = await fetch("/api/email-digest");
-      if (res.ok) {
-        // In live mode the API would return real emails; in demo we just re-render
-        showToast("Digest refreshed.");
-      }
+      await fetch("/api/email-digest");
+      showToast("Digest refreshed.");
     } catch {
       // swallow
     } finally {
@@ -245,60 +247,35 @@ export function EmailDigestClient({ hasKey, tenantId: _tenantId, userName }: Pro
     }
   }
 
-  function handleReply(email: Email) {
-    // Opens mailto in built-in mode; when Gmail is connected this would open Gmail compose
-    window.open(`mailto:${email.senderEmail}?subject=Re: ${encodeURIComponent(email.subject)}`, "_blank");
-  }
-
-  function handleSchedule(email: Email) {
-    showToast(`Reminder set: "${email.subject.slice(0, 40)}…"`);
-  }
-
-  function handleForward(email: Email) {
-    window.open(`mailto:?subject=Fwd: ${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.summary)}`, "_blank");
-  }
-
-  const active = emails.filter((e) => !e.done);
-  const urgent = active.filter((e) => e.priority === "Urgent");
-  const needReply = active.filter((e) => e.action === "Reply");
-  const newsletters = active.filter((e) => e.category === "Newsletter");
-  const unread = active.filter((e) => !e.read);
-
   function markDone(id: string) {
-    setEmails((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, done: true } : e))
-    );
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, done: true } : it)));
   }
 
-  function archiveEmail(id: string) {
-    setEmails((prev) =>
-      prev.map((e) => (e.id === id ? { ...e, done: true } : e))
-    );
-  }
+  const active = items.filter((it) => !it.done);
+  const urgentCount = active.filter((it) => it.section === "urgent").length;
+  const attentionCount = active.filter((it) => it.section === "attention").length;
+  const fyiCount = active.filter((it) => it.section === "fyi").length;
 
-  const filtered = active.filter((e) =>
-    activeFilter === "All" ? true : e.priority === activeFilter
-  );
+  const filtered =
+    activeSection === "all" ? active : active.filter((it) => it.section === activeSection);
 
-  const grouped = PRIORITY_ORDER.reduce((acc, p) => {
-    const items = filtered.filter((e) => e.priority === p);
-    if (items.length) acc.push({ priority: p, items });
-    return acc;
-  }, [] as { priority: Priority; items: Email[] }[]);
+  const grouped: { section: DigestSection; items: DigestItem[] }[] = (
+    ["urgent", "attention", "fyi"] as DigestSection[]
+  )
+    .map((s) => ({ section: s, items: filtered.filter((it) => it.section === s) }))
+    .filter((g) => g.items.length > 0);
 
   return (
     <div>
       <PageHeader
-        title="Smart Email Digest"
-        subtitle={`AI-prioritised inbox for ${userName.split(" ")[0]}. Focus on what matters.`}
+        title="Activity Digest"
+        subtitle={`Real-time digest from your CRM — leads, follow-ups & approvals for ${userName.split(" ")[0]}.`}
         icon="Mail"
         actions={
           <div className="flex items-center gap-2">
-            <span
-              className={`tag ${hasKey ? "bg-[rgba(62,199,141,.14)] text-green" : "bg-gold-soft text-gold-bright"}`}
-            >
-              <Icon name={hasKey ? "Wifi" : "WifiOff"} size={12} />
-              <span className="ml-1">{hasKey ? "Live" : "Demo"}</span>
+            <span className="tag bg-[rgba(62,199,141,.14)] text-green">
+              <Icon name="Database" size={12} />
+              <span className="ml-1">Live DB</span>
             </span>
             <button
               className="btn btn-primary flex items-center gap-1.5 text-sm"
@@ -310,321 +287,272 @@ export function EmailDigestClient({ hasKey, tenantId: _tenantId, userName }: Pro
               ) : (
                 <Icon name="RefreshCw" size={14} />
               )}
-              {refreshing ? "Refreshing…" : "Refresh Digest"}
+              {refreshing ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         }
       />
 
-      {!hasKey && (
-        <ConnectBanner
-          name="Gmail"
-          enables="Built-in AI digest with prioritised mock inbox is fully functional."
-        />
-      )}
-
-      {/* Summary card */}
+      {/* Summary row */}
       <div className="card p-5 mb-5 flex flex-wrap items-center gap-6">
         <div className="flex items-center gap-3">
           <div className="grid place-items-center w-11 h-11 rounded-xl bg-[rgba(240,85,106,.14)] text-red">
             <Icon name="AlertCircle" size={20} />
           </div>
           <div>
-            <div className="font-display text-2xl font-bold">{urgent.length}</div>
+            <div className="font-display text-2xl font-bold">{urgentCount}</div>
             <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">Urgent</div>
           </div>
         </div>
         <div className="h-10 w-px bg-line hidden sm:block" />
         <div className="flex items-center gap-3">
           <div className="grid place-items-center w-11 h-11 rounded-xl bg-gold-soft text-gold-bright">
-            <Icon name="Reply" size={20} />
+            <Icon name="Bell" size={20} />
           </div>
           <div>
-            <div className="font-display text-2xl font-bold">{needReply.length}</div>
-            <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">Need Reply</div>
+            <div className="font-display text-2xl font-bold">{attentionCount}</div>
+            <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">Needs Attention</div>
           </div>
         </div>
         <div className="h-10 w-px bg-line hidden sm:block" />
         <div className="flex items-center gap-3">
           <div className="grid place-items-center w-11 h-11 rounded-xl bg-panel-2 text-txt-faint">
-            <Icon name="Newspaper" size={20} />
+            <Icon name="Info" size={20} />
           </div>
           <div>
-            <div className="font-display text-2xl font-bold">{newsletters.length}</div>
-            <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">Newsletters</div>
-          </div>
-        </div>
-        <div className="h-10 w-px bg-line hidden sm:block" />
-        <div className="flex items-center gap-3">
-          <div className="grid place-items-center w-11 h-11 rounded-xl bg-[rgba(91,141,239,.14)] text-blue">
-            <Icon name="MailOpen" size={20} />
-          </div>
-          <div>
-            <div className="font-display text-2xl font-bold">{unread.length}</div>
-            <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">Unread</div>
+            <div className="font-display text-2xl font-bold">{fyiCount}</div>
+            <div className="text-txt-dim text-xs font-semibold uppercase tracking-wide">FYI</div>
           </div>
         </div>
         <div className="ml-auto text-sm text-txt-faint">
-          Last synced: <span className="text-txt">just now</span>
+          <span className="text-txt">{active.length}</span> active items
         </div>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-1 mb-5 p-1 bg-bg-2 rounded-xl w-fit">
-        {(["All", ...PRIORITY_ORDER] as (Priority | "All")[]).map((f) => (
-          <button
-            key={f}
-            onClick={() => setActiveFilter(f)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${
-              activeFilter === f ? "bg-gold text-[#0f1219]" : "text-txt-dim hover:text-txt"
-            }`}
-          >
-            {f}
-            <span className="ml-1.5 text-[10px] opacity-70">
-              {f === "All"
-                ? active.length
-                : active.filter((e) => e.priority === f).length}
-            </span>
-          </button>
-        ))}
-      </div>
-
-      {/* Email list */}
-      <div className="space-y-5">
-        {grouped.length === 0 && (
-          <EmptyState
-            icon="CheckCircle2"
-            title="All caught up!"
-            hint="No emails in this category. Nice work."
-          />
-        )}
-
-        {grouped.map(({ priority, items }) => (
-          <div key={priority}>
-            {/* Priority group header */}
-            <div className="flex items-center gap-2 mb-3">
-              <Icon
-                name={PRIORITY_CONFIG[priority].icon}
-                size={15}
-                className={PRIORITY_CONFIG[priority].color}
-              />
-              <span className="section-label">{priority}</span>
-              <span className="tag bg-panel-2 text-txt-faint text-[10px]">{items.length}</span>
-            </div>
-
-            <div className="space-y-2">
-              {items.map((email) => (
-                <div
-                  key={email.id}
-                  className={`card transition-all ${
-                    expandedId === email.id ? "border-gold-bright/30" : ""
-                  } ${!email.read ? "border-l-2 border-l-gold-bright" : ""}`}
-                >
-                  {/* Collapsed row */}
-                  <button
-                    className="w-full text-left p-4"
-                    onClick={() =>
-                      setExpandedId(expandedId === email.id ? null : email.id)
-                    }
-                  >
-                    <div className="flex items-start gap-3">
-                      {/* Avatar */}
-                      <div
-                        className={`grid place-items-center w-9 h-9 rounded-full text-[11px] font-bold flex-shrink-0 mt-0.5 ${
-                          email.category === "Lead Enquiry"
-                            ? "bg-blue text-white"
-                            : email.category === "Vendor"
-                            ? "bg-purple text-white"
-                            : email.category === "Legal"
-                            ? "bg-red text-white"
-                            : email.category === "Finance"
-                            ? "bg-gold text-[#1a1205]"
-                            : "bg-panel-2 text-txt-dim"
-                        }`}
-                      >
-                        {initials(email.sender.split(" ").slice(0, 2).join(" "))}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
-                          <span
-                            className={`text-sm font-semibold ${!email.read ? "text-txt" : "text-txt-dim"}`}
-                          >
-                            {email.sender}
-                          </span>
-                          <div className="flex items-center gap-2">
-                            <Badge tone={CATEGORY_TONE[email.category]}>
-                              {email.category}
-                            </Badge>
-                            <span className="text-[11px] text-txt-faint">
-                              {mounted ? timeAgo(email.receivedAt) : ""}
-                            </span>
-                          </div>
-                        </div>
-                        <p
-                          className={`text-sm mt-0.5 ${!email.read ? "font-medium" : "text-txt-dim"}`}
-                        >
-                          {email.subject}
-                        </p>
-                        <p className="text-xs text-txt-faint mt-1 line-clamp-2 leading-relaxed">
-                          <Icon name="Sparkles" size={11} className="inline mr-1 text-gold-bright" />
-                          {email.summary}
-                        </p>
-                      </div>
-
-                      {/* Action chip */}
-                      <div className="flex-shrink-0 hidden sm:block">
-                        <span
-                          className={`tag text-[11px] ${
-                            email.action === "Reply"
-                              ? "bg-[rgba(62,199,141,.14)] text-green"
-                              : email.action === "Schedule"
-                              ? "bg-gold-soft text-gold-bright"
-                              : "bg-panel-2 text-txt-faint"
-                          }`}
-                        >
-                          <Icon
-                            name={ACTION_CONFIG[email.action].icon}
-                            size={11}
-                            className="inline mr-1"
-                          />
-                          {email.action}
-                        </span>
-                      </div>
-
-                      <Icon
-                        name={expandedId === email.id ? "ChevronUp" : "ChevronDown"}
-                        size={16}
-                        className="text-txt-faint flex-shrink-0 mt-1"
-                      />
-                    </div>
-                  </button>
-
-                  {/* Expanded detail */}
-                  {expandedId === email.id && (
-                    <div className="px-4 pb-4 border-t border-line/30 mt-0 pt-4 animate-fade-in">
-                      <div className="flex items-center gap-2 text-xs text-txt-faint mb-3">
-                        <Icon name="AtSign" size={12} />
-                        <span>{email.senderEmail}</span>
-                        <span className="mx-1">·</span>
-                        <Icon name="Clock" size={12} />
-                        <span>{mounted ? new Date(email.receivedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : ""}</span>
-                      </div>
-
-                      {/* AI summary block */}
-                      <div className="bg-panel-2 rounded-xl p-4 mb-4">
-                        <div className="flex items-center gap-2 text-gold-bright text-xs font-semibold mb-2">
-                          <Icon name="Sparkles" size={13} />
-                          AI Summary
-                        </div>
-                        <p className="text-sm text-txt leading-relaxed">{email.summary}</p>
-                        <div className="mt-3 pt-3 border-t border-line/30 flex items-center gap-2">
-                          <span className="text-xs text-txt-faint font-semibold">Suggested action:</span>
-                          <span
-                            className={`tag text-[11px] ${
-                              email.action === "Reply"
-                                ? "bg-[rgba(62,199,141,.14)] text-green"
-                                : email.action === "Schedule"
-                                ? "bg-gold-soft text-gold-bright"
-                                : "bg-panel-2 text-txt-faint"
-                            }`}
-                          >
-                            <Icon
-                              name={ACTION_CONFIG[email.action].icon}
-                              size={11}
-                              className="inline mr-1"
-                            />
-                            {email.action}
-                          </span>
-                          <Badge tone={CATEGORY_TONE[email.category]}>{email.category}</Badge>
-                        </div>
-                      </div>
-
-                      {/* Action buttons */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {email.action === "Reply" && (
-                          <button
-                            className="btn btn-primary flex items-center gap-1.5 text-sm"
-                            onClick={() => handleReply(email)}
-                          >
-                            <Icon name="Reply" size={14} />
-                            Reply
-                          </button>
-                        )}
-                        {email.action === "Schedule" && (
-                          <button
-                            className="btn btn-primary flex items-center gap-1.5 text-sm"
-                            onClick={() => handleSchedule(email)}
-                          >
-                            <Icon name="Calendar" size={14} />
-                            Schedule
-                          </button>
-                        )}
-                        <button
-                          onClick={() => markDone(email.id)}
-                          className="btn btn-ghost flex items-center gap-1.5 text-sm"
-                        >
-                          <Icon name="CheckCircle2" size={14} />
-                          Mark Done
-                        </button>
-                        <button
-                          onClick={() => archiveEmail(email.id)}
-                          className="btn btn-ghost flex items-center gap-1.5 text-sm text-txt-faint"
-                        >
-                          <Icon name="Archive" size={14} />
-                          Archive
-                        </button>
-                        {email.action === "Reply" && (
-                          <button
-                            className="btn btn-ghost flex items-center gap-1.5 text-sm text-txt-faint"
-                            onClick={() => handleForward(email)}
-                          >
-                            <Icon name="Forward" size={14} />
-                            Forward
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
+      {/* Gmail connect card */}
+      {hasGmail ? (
+        <div className="card p-4 flex items-center gap-3 mb-5 border-[rgba(62,199,141,.25)]">
+          <div className="grid place-items-center w-9 h-9 rounded-lg bg-[rgba(62,199,141,.14)] text-green">
+            <Icon name="Mail" size={17} />
           </div>
-        ))}
-      </div>
-
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 z-50 card p-4 text-sm font-medium shadow-2xl border border-line animate-fade-in">
-          {toast}
+          <div className="text-sm">
+            <span className="font-semibold text-green">Gmail connected.</span>{" "}
+            <span className="text-txt-dim">
+              Your Gmail inbox can be summarised here — implement{" "}
+              <code className="text-txt bg-panel-2 px-1 rounded text-xs">fetchGmailInbox()</code> in{" "}
+              <code className="text-txt bg-panel-2 px-1 rounded text-xs">api/email-digest</code> to pull live emails.
+            </span>
+          </div>
+        </div>
+      ) : (
+        <div className="card p-4 flex items-center gap-3 border-dashed mb-5">
+          <div className="grid place-items-center w-9 h-9 rounded-lg bg-gold-soft text-gold-bright">
+            <Icon name="Mail" size={17} />
+          </div>
+          <div className="text-sm flex-1">
+            <span className="font-semibold">Connect Gmail to also summarise your email inbox.</span>{" "}
+            <span className="text-txt-dim">
+              This digest shows your real CRM data. Add your Gmail integration in{" "}
+            </span>
+            <a href="/settings" className="text-gold-bright font-semibold">
+              Settings → Integrations
+            </a>
+            <span className="text-txt-dim"> to also pull and prioritise your inbox.</span>
+          </div>
         </div>
       )}
 
-      {/* Archived section toggle */}
-      {emails.some((e) => e.done) && (
+      {/* Filter tabs */}
+      <div className="flex gap-1 mb-5 p-1 bg-bg-2 rounded-xl w-fit">
+        {(["all", "urgent", "attention", "fyi"] as const).map((f) => {
+          const count =
+            f === "all"
+              ? active.length
+              : active.filter((it) => it.section === f).length;
+          return (
+            <button
+              key={f}
+              onClick={() => setActiveSection(f)}
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${
+                activeSection === f
+                  ? "bg-gold text-[#0f1219]"
+                  : "text-txt-dim hover:text-txt"
+              }`}
+            >
+              {f === "all" ? "All" : f === "attention" ? "Attention" : f.charAt(0).toUpperCase() + f.slice(1)}
+              <span className="ml-1.5 text-[10px] opacity-70">{count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Digest list */}
+      <div className="space-y-5">
+        {grouped.length === 0 && active.length === 0 && (
+          <EmptyState
+            icon="CheckCircle2"
+            title="All caught up!"
+            hint="No overdue follow-ups, pending approvals, or recent leads. Great work."
+          />
+        )}
+
+        {grouped.length === 0 && active.length > 0 && (
+          <EmptyState
+            icon="Filter"
+            title="No items in this category"
+            hint="Switch to a different filter to see items."
+          />
+        )}
+
+        {grouped.map(({ section, items: sectionItems }) => {
+          const cfg = SECTION_CONFIG[section];
+          return (
+            <div key={section}>
+              {/* Section header */}
+              <div className="flex items-center gap-2 mb-3">
+                <Icon name={cfg.icon} size={15} className={cfg.color} />
+                <span className="section-label">{cfg.label}</span>
+                <span className="tag bg-panel-2 text-txt-faint text-[10px]">
+                  {sectionItems.length}
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {sectionItems.map((item) => (
+                  <div
+                    key={item.id}
+                    className={`card transition-all ${
+                      expandedId === item.id ? "border-gold-bright/30" : ""
+                    } ${section === "urgent" ? "border-l-2 border-l-red" : ""}`}
+                  >
+                    <button
+                      className="w-full text-left p-4"
+                      onClick={() =>
+                        setExpandedId(expandedId === item.id ? null : item.id)
+                      }
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Avatar / icon */}
+                        <div
+                          className={`grid place-items-center w-9 h-9 rounded-full text-[11px] font-bold flex-shrink-0 mt-0.5 ${cfg.accent} ${cfg.color}`}
+                        >
+                          <Icon name={cfg.icon} size={16} />
+                        </div>
+
+                        {/* Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-txt">
+                              {item.title}
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <Badge tone={TAG_TONE_MAP[item.tagTone] ?? "neutral"}>
+                                {item.tag}
+                              </Badge>
+                              <span className="text-[11px] text-txt-faint">
+                                {mounted ? timeAgo(item.date) : ""}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="text-xs text-txt-faint mt-1 leading-relaxed line-clamp-2">
+                            {item.context}
+                          </p>
+                        </div>
+
+                        <Icon
+                          name={expandedId === item.id ? "ChevronUp" : "ChevronDown"}
+                          size={16}
+                          className="text-txt-faint flex-shrink-0 mt-1"
+                        />
+                      </div>
+                    </button>
+
+                    {/* Expanded */}
+                    {expandedId === item.id && (
+                      <div className="px-4 pb-4 border-t border-line/30 pt-4 animate-fade-in">
+                        <div className="flex items-center gap-2 text-xs text-txt-faint mb-3">
+                          <Icon name="Clock" size={12} />
+                          <span>
+                            {mounted
+                              ? new Date(item.date).toLocaleString("en-IN", {
+                                  day: "numeric",
+                                  month: "short",
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })
+                              : ""}
+                          </span>
+                        </div>
+
+                        <div className="bg-panel-2 rounded-xl p-4 mb-4">
+                          <p className="text-sm text-txt leading-relaxed">{item.context}</p>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <a
+                            href={item.href}
+                            className="btn btn-primary flex items-center gap-1.5 text-sm"
+                          >
+                            <Icon name="ArrowRight" size={14} />
+                            Open in CRM
+                          </a>
+                          <button
+                            onClick={() => {
+                              markDone(item.id);
+                              showToast("Marked as done.");
+                            }}
+                            className="btn btn-ghost flex items-center gap-1.5 text-sm"
+                          >
+                            <Icon name="CheckCircle2" size={14} />
+                            Mark Done
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Archived/done section */}
+      {items.some((it) => it.done) && (
         <div className="mt-6">
           <details className="group">
             <summary className="flex items-center gap-2 text-txt-faint text-sm cursor-pointer hover:text-txt transition-colors list-none">
               <Icon name="Archive" size={14} />
-              <span>{emails.filter((e) => e.done).length} archived / done</span>
-              <Icon name="ChevronDown" size={13} className="group-open:rotate-180 transition-transform" />
+              <span>{items.filter((it) => it.done).length} done</span>
+              <Icon
+                name="ChevronDown"
+                size={13}
+                className="group-open:rotate-180 transition-transform"
+              />
             </summary>
             <div className="mt-3 space-y-2">
-              {emails
-                .filter((e) => e.done)
-                .map((email) => (
-                  <div key={email.id} className="card p-3 opacity-50">
+              {items
+                .filter((it) => it.done)
+                .map((item) => (
+                  <div key={item.id} className="card p-3 opacity-50">
                     <div className="flex items-center gap-3">
-                      <Icon name="CheckCircle2" size={14} className="text-green flex-shrink-0" />
+                      <Icon
+                        name="CheckCircle2"
+                        size={14}
+                        className="text-green flex-shrink-0"
+                      />
                       <div className="flex-1 min-w-0">
-                        <span className="text-sm text-txt-dim line-through truncate block">{email.subject}</span>
-                        <span className="text-xs text-txt-faint">{email.sender}</span>
+                        <span className="text-sm text-txt-dim line-through truncate block">
+                          {item.title}
+                        </span>
+                        <span className="text-xs text-txt-faint">{item.context}</span>
                       </div>
                       <button
                         onClick={() =>
-                          setEmails((prev) =>
-                            prev.map((e) => (e.id === email.id ? { ...e, done: false } : e))
+                          setItems((prev) =>
+                            prev.map((it) =>
+                              it.id === item.id ? { ...it, done: false } : it
+                            )
                           )
                         }
                         className="btn btn-ghost text-xs p-1.5"
@@ -636,6 +564,13 @@ export function EmailDigestClient({ hasKey, tenantId: _tenantId, userName }: Pro
                 ))}
             </div>
           </details>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 card p-4 text-sm font-medium shadow-2xl border border-line animate-fade-in">
+          {toast}
         </div>
       )}
     </div>

@@ -101,26 +101,44 @@ async function main() {
 
   // ── Properties / Inventory ──
   const projects = ["Shubh Heights", "Shubh Greens", "Shubh Residency", "Shubh Plaza", "Shubh Enclave"];
+  // Realistic base ₹/sqft per Jaipur area; inventory is listed over the last 7 months
+  // with a mild upward drift, so the Price Trends module can derive a REAL trend from it.
+  const AREA_BASE: Record<string, number> = {
+    Mansarovar: 5200, Jagatpura: 6100, "Vaishali Nagar": 6800, "Tonk Road": 5600,
+    "Ajmer Road": 4800, "C-Scheme": 9200, Sitapura: 4300,
+  };
+  const TREND_MONTHS = ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
   const properties = [];
-  for (let i = 0; i < 24; i++) {
-    const size = 600 + Math.floor(rand(i + 1) * 2400);
-    const pps = 3500 + Math.floor(rand(i + 7) * 4500);
-    const status = i % 5 === 0 ? PropertyStatus.SOLD : i % 4 === 0 ? PropertyStatus.HELD : PropertyStatus.AVAILABLE;
-    const p = await prisma.property.create({
-      data: {
-        tenantId: tenant.id,
-        name: `Unit ${String.fromCharCode(65 + (i % 6))}-${100 + i}`,
-        projectName: pick(projects, i),
-        unitType: pick(TYPES, i),
-        sizeSqft: size,
-        pricePerSqft: pps,
-        totalPrice: size * pps,
-        status,
-        location: pick(AREAS, i),
-        reraId: `RAJ/P/2023/${1800 + i}`,
-      },
-    });
-    properties.push(p);
+  let pi = 0;
+  // Spread units evenly: each area gets a unit in (almost) every month → derivable trend
+  for (const area of AREAS) {
+    for (let m = 0; m < TREND_MONTHS.length; m++) {
+      // ~85% fill so some months are sparse (realistic), but every area has a current point
+      if (m < TREND_MONTHS.length - 1 && rand(pi + 3) > 0.85) { pi++; continue; }
+      const size = 600 + Math.floor(rand(pi + 1) * 2400);
+      const base = AREA_BASE[area] ?? 5000;
+      const drift = 1 + m * 0.012 + (rand(pi + 7) - 0.5) * 0.03; // +1.2%/mo + noise
+      const pps = Math.round(base * drift);
+      const status = pi % 5 === 0 ? PropertyStatus.SOLD : pi % 4 === 0 ? PropertyStatus.HELD : PropertyStatus.AVAILABLE;
+      const createdAt = new Date(`${TREND_MONTHS[m]}-${10 + (pi % 15)}T10:00:00`);
+      const p = await prisma.property.create({
+        data: {
+          tenantId: tenant.id,
+          name: `Unit ${String.fromCharCode(65 + (pi % 6))}-${100 + pi}`,
+          projectName: pick(projects, pi),
+          unitType: pick(TYPES, pi),
+          sizeSqft: size,
+          pricePerSqft: pps,
+          totalPrice: size * pps,
+          status,
+          location: area,
+          reraId: `RAJ/P/2023/${1800 + pi}`,
+          createdAt,
+        },
+      });
+      properties.push(p);
+      pi++;
+    }
   }
 
   // ── Leads (~52) ──
@@ -166,6 +184,11 @@ async function main() {
   const wonLeads = leads.filter((l) => l.stage === "CLOSED_WON").slice(0, 8);
   for (let i = 0; i < wonLeads.length; i++) {
     const prop = pick(properties, i);
+    // Spread bookings across the last ~6 months so revenue & MoM deltas are real and meaningful
+    const monthsAgo = i % 6;
+    const bookedAt = new Date();
+    bookedAt.setMonth(bookedAt.getMonth() - monthsAgo);
+    bookedAt.setDate(3 + ((i * 4) % 24));
     await prisma.booking.create({
       data: {
         tenantId: tenant.id,
@@ -174,6 +197,7 @@ async function main() {
         amount: Number(prop.totalPrice),
         paymentStatus: pick([PaymentStatus.TOKEN, PaymentStatus.PAID_20, PaymentStatus.FULL_PAID], i),
         bookedById: pick(staff, i).id,
+        createdAt: bookedAt,
         schedule: [
           { milestone: "Booking Token", pct: 10, status: "PAID" },
           { milestone: "Agreement (20%)", pct: 20, status: i % 2 ? "PAID" : "DUE" },
@@ -320,16 +344,21 @@ async function main() {
     data: { tenantId: tenant.id, type: ApprovalType.BOOKING, requestedById: employee2.id, status: ApprovalStatus.APPROVED, decidedById: manager.id, note: "Booking with token below standard." },
   });
 
-  // ── Price trends (7 months per area: Dec 2025 → Jun 2026) ──
-  const TREND_MONTHS = ["2025-12", "2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"];
-  for (const area of AREAS) {
-    let base = 4500 + Math.floor(rand(area.length) * 2500);
-    for (let m = 0; m < TREND_MONTHS.length; m++) {
-      base = Math.round(base * (1 + (rand(area.length + m) - 0.35) * 0.04));
-      await prisma.priceTrend.create({
-        data: { tenantId: tenant.id, area, month: TREND_MONTHS[m], pricePerSqft: base },
-      });
-    }
+  // ── Price trends — DERIVED from the real inventory (avg ₹/sqft per area per listing-month).
+  //    No synthetic formula: this is the same computation the in-app "Recompute from inventory" runs.
+  const trendAgg: Record<string, { sum: number; n: number }> = {};
+  for (const p of properties) {
+    const month = p.createdAt.toISOString().slice(0, 7);
+    const key = `${p.location}__${month}`;
+    if (!trendAgg[key]) trendAgg[key] = { sum: 0, n: 0 };
+    trendAgg[key].sum += Number(p.pricePerSqft);
+    trendAgg[key].n += 1;
+  }
+  for (const [key, { sum, n }] of Object.entries(trendAgg)) {
+    const [area, month] = key.split("__");
+    await prisma.priceTrend.create({
+      data: { tenantId: tenant.id, area, month, pricePerSqft: Math.round(sum / n) },
+    });
   }
 
   // ── CEO notes ──

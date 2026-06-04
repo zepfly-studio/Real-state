@@ -1,10 +1,12 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { Card, PageHeader, Badge, EmptyState } from "@/components/ui";
+import { useRouter } from "next/navigation";
+import { Card, PageHeader, EmptyState } from "@/components/ui";
 import { TrendLine } from "@/components/charts";
 import { Icon } from "@/components/Icon";
-import { JAIPUR_AREAS, pct } from "@/lib/format";
+import { pct } from "@/lib/format";
+import { Loader2, RefreshCw, Plus, X } from "lucide-react";
 
 interface ChangeRow {
   area: string;
@@ -17,6 +19,9 @@ interface PriceTrendsClientProps {
   chartData: Record<string, string | number>[];
   changeTable: ChangeRow[];
   availableAreas: string[];
+  allAreas: string[];
+  canEdit: boolean;
+  marketConnected: boolean;
 }
 
 // Colors for each Jaipur area
@@ -40,10 +45,53 @@ export function PriceTrendsClient({
   chartData,
   changeTable,
   availableAreas,
+  allAreas,
+  canEdit,
+  marketConnected,
 }: PriceTrendsClientProps) {
+  const router = useRouter();
   const [activeAreas, setActiveAreas] = useState<Set<string>>(
     new Set(availableAreas)
   );
+  const [busy, setBusy] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [form, setForm] = useState({ area: allAreas[0] ?? "", month: "2026-06", pricePerSqft: "" });
+  const [msg, setMsg] = useState("");
+
+  async function recompute() {
+    setBusy(true);
+    setMsg("");
+    const res = await fetch("/api/price-trends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "recompute" }),
+    });
+    setBusy(false);
+    if (res.ok) {
+      const j = await res.json();
+      setMsg(`Recomputed ${j.count} data points from your inventory.`);
+      router.refresh();
+    } else setMsg("Recompute failed.");
+  }
+
+  async function addPoint() {
+    if (!form.area || !form.month || !form.pricePerSqft) return;
+    setBusy(true);
+    const res = await fetch("/api/price-trends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+    setBusy(false);
+    if (res.ok) {
+      setShowAdd(false);
+      setForm({ area: allAreas[0] ?? "", month: "2026-06", pricePerSqft: "" });
+      router.refresh();
+    } else {
+      const j = await res.json().catch(() => ({}));
+      setMsg(j.error || "Failed to add point.");
+    }
+  }
 
   function toggleArea(area: string) {
     setActiveAreas((prev) => {
@@ -107,13 +155,20 @@ export function PriceTrendsClient({
       <div>
         <PageHeader
           title="Property Price Trends"
-          subtitle="Area-wise price per sqft trends across Jaipur."
+          subtitle="Area-wise ₹/sqft, derived from your real inventory."
           icon="TrendingUp"
         />
         <EmptyState
           icon="TrendingUp"
-          title="No Price Trend Data Yet"
-          hint="Price trend data for Jaipur areas will appear here once seeded."
+          title="No price trend data yet"
+          hint={canEdit ? "Recompute from your inventory, or add a data point manually." : "Ask an admin to populate price trends."}
+          action={
+            canEdit ? (
+              <button className="btn btn-primary" onClick={recompute} disabled={busy}>
+                {busy ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={15} />} Recompute from inventory
+              </button>
+            ) : undefined
+          }
         />
       </div>
     );
@@ -123,9 +178,71 @@ export function PriceTrendsClient({
     <div>
       <PageHeader
         title="Property Price Trends"
-        subtitle="Area-wise price per sqft trends across Jaipur — Dec 2025 to Jun 2026."
+        subtitle="Area-wise ₹/sqft — derived from your real inventory listings."
         icon="TrendingUp"
+        actions={
+          canEdit ? (
+            <>
+              <button className="btn" onClick={recompute} disabled={busy} title="Rebuild from your Property inventory">
+                {busy ? <Loader2 size={15} className="animate-spin" /> : <RefreshCw size={15} />} Recompute
+              </button>
+              <button className="btn btn-primary" onClick={() => setShowAdd(true)}>
+                <Plus size={15} /> Add data point
+              </button>
+            </>
+          ) : undefined
+        }
       />
+
+      {/* Data source note + optional live-market banner */}
+      <div className="card p-3 mb-5 flex flex-wrap items-center gap-2 text-sm">
+        <Icon name="Database" size={15} className="text-gold-bright" />
+        <span className="text-txt-dim">
+          Trends are computed from your inventory's average ₹/sqft per area, per listing month.
+          {marketConnected
+            ? " Live market index is connected."
+            : " Add monthly data points manually, or "}
+        </span>
+        {!marketConnected && (
+          <a href="/settings" className="text-gold-bright font-semibold">connect a Market Data provider</a>
+        )}
+        {!marketConnected && <span className="text-txt-dim">for a live area-level index.</span>}
+        {msg && <span className="text-green ml-auto">{msg}</span>}
+      </div>
+
+      {/* Add / edit data point modal */}
+      {showAdd && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <Card className="w-full max-w-sm p-6 animate-fade-in">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display font-bold text-lg">Add price data point</h3>
+              <button onClick={() => setShowAdd(false)} className="text-txt-faint hover:text-txt"><X size={20} /></button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="field-label">Area</label>
+                <select className="input" value={form.area} onChange={(e) => setForm((f) => ({ ...f, area: e.target.value }))}>
+                  {allAreas.map((a) => <option key={a} value={a}>{a}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Month</label>
+                <input className="input" type="month" value={form.month} onChange={(e) => setForm((f) => ({ ...f, month: e.target.value }))} />
+              </div>
+              <div>
+                <label className="field-label">Price ₹ / sqft</label>
+                <input className="input" type="number" value={form.pricePerSqft} onChange={(e) => setForm((f) => ({ ...f, pricePerSqft: e.target.value }))} placeholder="e.g. 6200" />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button className="btn btn-ghost flex-1 justify-center" onClick={() => setShowAdd(false)}>Cancel</button>
+              <button className="btn btn-primary flex-1 justify-center" onClick={addPoint} disabled={busy || !form.pricePerSqft}>
+                {busy ? <Loader2 size={15} className="animate-spin" /> : "Save point"}
+              </button>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* Summary KPI tiles */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">

@@ -7,7 +7,24 @@ import { inr } from "@/lib/format";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface LeadResult {
+/** Shape for a real CRM lead returned by the "search" mode */
+interface CrmLeadResult {
+  id: string;
+  name: string;
+  phone: string;
+  email: string | null;
+  propertyType: string;
+  location: string;
+  source: string;
+  temperature: string;
+  stage: string;
+  value: number;
+  notes: string | null;
+  inCrm: true; // always true — these are real DB leads
+}
+
+/** Shape for an enriched external prospect (Apollo / Hunter / Clearbit) */
+interface DiscoverResult {
   id: string;
   name: string;
   title: string;
@@ -22,22 +39,38 @@ interface LeadResult {
   companySize: string;
   score: number;
   enriched: boolean;
-  demo: boolean;
+  inCrm: false;
 }
 
+type LeadResult = CrmLeadResult | DiscoverResult;
+
+type SearchMode = "search" | "discover";
+
 interface Filters {
-  industry: string;
+  query: string;       // name search (search mode)
   location: string;
-  budgetMin: string;
-  budgetMax: string;
+  propertyType: string;
+  temperature: string;
+  // discover-mode extras
+  industry: string;
+  budgetRange: string;
   companySize: string;
 }
 
-const INDUSTRIES = [
-  { value: "", label: "All Industries" },
-  { value: "real-estate-buyers", label: "Real Estate Buyers" },
-  { value: "nri-investors", label: "NRI Investors" },
-  { value: "hni", label: "HNI (High Net-worth)" },
+const PROPERTY_TYPES = [
+  { value: "", label: "All Types" },
+  { value: "2BHK", label: "2BHK" },
+  { value: "3BHK", label: "3BHK" },
+  { value: "Villa", label: "Villa" },
+  { value: "Plot", label: "Plot" },
+  { value: "Commercial", label: "Commercial" },
+];
+
+const TEMPERATURES = [
+  { value: "", label: "All" },
+  { value: "HOT", label: "Hot" },
+  { value: "WARM", label: "Warm" },
+  { value: "COLD", label: "Cold" },
 ];
 
 const LOCATIONS = [
@@ -49,6 +82,13 @@ const LOCATIONS = [
   { value: "Ajmer Road", label: "Ajmer Road" },
   { value: "C-Scheme", label: "C-Scheme" },
   { value: "Sitapura", label: "Sitapura" },
+];
+
+const INDUSTRIES = [
+  { value: "", label: "All Industries" },
+  { value: "real-estate-buyers", label: "Real Estate Buyers" },
+  { value: "nri-investors", label: "NRI Investors" },
+  { value: "hni", label: "HNI (High Net-worth)" },
 ];
 
 const COMPANY_SIZES = [
@@ -67,6 +107,12 @@ const BUDGET_RANGES = [
   { value: "50000000-", label: "₹5Cr+" },
 ];
 
+function tempBadge(t: string) {
+  if (t === "HOT") return <Badge tone="gold">Hot</Badge>;
+  if (t === "WARM") return <Badge tone="blue">Warm</Badge>;
+  return <Badge tone="neutral">Cold</Badge>;
+}
+
 function scoreBadge(score: number) {
   if (score >= 80) return <Badge tone="green">{score}</Badge>;
   if (score >= 60) return <Badge tone="gold">{score}</Badge>;
@@ -76,17 +122,22 @@ function scoreBadge(score: number) {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function LeadGeniusClient({
-  isDemo,
+  hasExternalKey,
   tenantId,
+  totalLeads,
 }: {
-  isDemo: boolean;
+  hasExternalKey: boolean;
   tenantId: string;
+  totalLeads: number;
 }) {
+  const [mode, setMode] = useState<SearchMode>("search");
   const [filters, setFilters] = useState<Filters>({
-    industry: "",
+    query: "",
     location: "",
-    budgetMin: "",
-    budgetMax: "",
+    propertyType: "",
+    temperature: "",
+    industry: "",
+    budgetRange: "",
     companySize: "",
   });
 
@@ -96,6 +147,7 @@ export function LeadGeniusClient({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [addingCrm, setAddingCrm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -106,12 +158,12 @@ export function LeadGeniusClient({
     setLoading(true);
     setResults([]);
     setSelected(new Set());
+    setSearched(true);
     try {
       let budgetMin = "";
       let budgetMax = "";
-      const budgetVal = filters.budgetMin || filters.budgetMax;
-      if (budgetVal) {
-        const parts = budgetVal.split("-");
+      if (filters.budgetRange) {
+        const parts = filters.budgetRange.split("-");
         budgetMin = parts[0] || "";
         budgetMax = parts[1] || "";
       }
@@ -120,8 +172,12 @@ export function LeadGeniusClient({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          industry: filters.industry,
+          mode,
+          query: filters.query,
           location: filters.location,
+          propertyType: filters.propertyType,
+          temperature: filters.temperature,
+          industry: filters.industry,
           budgetMin,
           budgetMax,
           companySize: filters.companySize,
@@ -135,7 +191,7 @@ export function LeadGeniusClient({
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, mode]);
 
   const handleEnrich = useCallback(async (leadId: string) => {
     setEnrichingIds((prev) => new Set(prev).add(leadId));
@@ -178,22 +234,39 @@ export function LeadGeniusClient({
   const handleExportCsv = () => {
     const rows = results.filter((r) => selected.has(r.id));
     if (!rows.length) { showToast("Select at least one lead to export."); return; }
-    const headers = ["Name", "Title", "Company", "Email", "Phone", "Location", "Industry", "Budget (INR)", "Score"];
+
+    const headers = mode === "search"
+      ? ["Name", "Phone", "Email", "Property Type", "Location", "Temperature", "Stage", "Value (INR)"]
+      : ["Name", "Title", "Company", "Email", "Phone", "Location", "Industry", "Budget (INR)", "Score"];
+
     const csv = [
       headers.join(","),
-      ...rows.map((r) =>
-        [
-          `"${r.name}"`,
-          `"${r.title}"`,
-          `"${r.company}"`,
-          `"${r.enriched && r.email ? r.email : r.emailMasked}"`,
-          `"${r.enriched && r.phone ? r.phone : r.phoneMasked}"`,
-          `"${r.location}"`,
-          `"${r.industry}"`,
-          r.budget,
-          r.score,
-        ].join(",")
-      ),
+      ...rows.map((r) => {
+        if (r.inCrm) {
+          return [
+            `"${r.name}"`,
+            `"${r.phone}"`,
+            `"${r.email ?? ""}"`,
+            `"${r.propertyType}"`,
+            `"${r.location}"`,
+            `"${r.temperature}"`,
+            `"${r.stage}"`,
+            r.value,
+          ].join(",");
+        } else {
+          return [
+            `"${r.name}"`,
+            `"${r.title}"`,
+            `"${r.company}"`,
+            `"${r.enriched && r.email ? r.email : r.emailMasked}"`,
+            `"${r.enriched && r.phone ? r.phone : r.phoneMasked}"`,
+            `"${r.location}"`,
+            `"${r.industry}"`,
+            r.budget,
+            r.score,
+          ].join(",");
+        }
+      }),
     ].join("\n");
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
@@ -207,7 +280,12 @@ export function LeadGeniusClient({
   };
 
   const handleAddToCrm = useCallback(async () => {
-    const rows = results.filter((r) => selected.has(r.id));
+    // In "search" mode results are already in CRM — nothing to import
+    if (mode === "search") {
+      showToast("These leads are already in your CRM.");
+      return;
+    }
+    const rows = results.filter((r) => selected.has(r.id)) as DiscoverResult[];
     if (!rows.length) { showToast("Select at least one lead to add."); return; }
     setAddingCrm(true);
     try {
@@ -237,25 +315,21 @@ export function LeadGeniusClient({
     } finally {
       setAddingCrm(false);
     }
-  }, [results, selected]);
+  }, [results, selected, mode]);
 
-  const handleBudgetChange = (val: string) => {
-    if (!val) {
-      setFilters((f) => ({ ...f, budgetMin: "", budgetMax: "" }));
-    } else {
-      setFilters((f) => ({ ...f, budgetMin: val, budgetMax: val }));
-    }
+  // Switch mode and clear results
+  const switchMode = (m: SearchMode) => {
+    setMode(m);
+    setResults([]);
+    setSelected(new Set());
+    setSearched(false);
   };
-
-  const budgetFilterValue = filters.budgetMin
-    ? `${filters.budgetMin}-${filters.budgetMax}`
-    : "";
 
   return (
     <div>
       <PageHeader
         title="Lead Genius"
-        subtitle="Find & enrich real estate prospects in Jaipur"
+        subtitle="Search your CRM database or discover new prospects"
         icon="Sparkles"
         actions={
           <div className="flex items-center gap-2">
@@ -268,106 +342,233 @@ export function LeadGeniusClient({
                   <Icon name="Download" size={15} />
                   Export CSV ({selected.size})
                 </button>
-                <button
-                  className="btn btn-primary text-sm"
-                  onClick={handleAddToCrm}
-                  disabled={addingCrm}
-                >
-                  {addingCrm ? (
-                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                  ) : (
-                    <Icon name="UserPlus" size={15} />
-                  )}
-                  Add to CRM
-                </button>
+                {mode === "discover" && (
+                  <button
+                    className="btn btn-primary text-sm"
+                    onClick={handleAddToCrm}
+                    disabled={addingCrm}
+                  >
+                    {addingCrm ? (
+                      <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                    ) : (
+                      <Icon name="UserPlus" size={15} />
+                    )}
+                    Add to CRM
+                  </button>
+                )}
               </>
             )}
           </div>
         }
       />
 
-      {isDemo && (
-        <ConnectBanner
-          name="Apollo.io / Hunter.io / Clearbit"
-          enables="Built-in prospect database with 25 Jaipur leads is fully functional. Real-time B2B contact discovery & enrichment unlocks when you connect."
+      {/* Mode toggle */}
+      <div className="flex gap-1 mb-5 p-1 bg-bg-2 rounded-xl w-fit">
+        <button
+          onClick={() => switchMode("search")}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            mode === "search" ? "bg-gold text-[#0f1219]" : "text-txt-dim hover:text-txt"
+          }`}
+        >
+          <Icon name="Database" size={14} className="inline mr-1.5 align-text-bottom" />
+          Search My Database
+        </button>
+        <button
+          onClick={() => switchMode("discover")}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+            mode === "discover" ? "bg-gold text-[#0f1219]" : "text-txt-dim hover:text-txt"
+          }`}
+        >
+          <Icon name="Globe" size={14} className="inline mr-1.5 align-text-bottom" />
+          Discover New Leads
+        </button>
+      </div>
+
+      {/* Discover mode without API keys — show connect banner and stop */}
+      {mode === "discover" && !hasExternalKey && (
+        <div className="space-y-4">
+          <ConnectBanner
+            name="Apollo.io / Hunter.io / Clearbit"
+            enables="Discover new real estate prospects outside your CRM — B2B contact lookup, email finder & company enrichment."
+          />
+          <EmptyState
+            icon="UserSearch"
+            title="Connect a provider to discover new prospects"
+            hint="Go to Settings → Integrations and add your Apollo, Hunter, or Clearbit API key to start finding new leads outside your database."
+          />
+        </div>
+      )}
+
+      {/* Search-mode hint */}
+      {mode === "search" && (
+        <div className="mb-4 flex items-center gap-2 text-sm text-txt-dim bg-bg-2 rounded-xl px-4 py-3">
+          <Icon name="Info" size={15} className="text-blue flex-shrink-0" />
+          <span>
+            Searching <strong className="text-txt">{totalLeads} real lead{totalLeads !== 1 ? "s" : ""}</strong> from your CRM. All results are your actual data.
+          </span>
+        </div>
+      )}
+
+      {/* Filters — shown for both modes (discover only shown when key is available) */}
+      {(mode === "search" || hasExternalKey) && (
+        <Card className="p-5 mb-5">
+          <p className="section-label mb-4">
+            {mode === "search" ? "Search Filters" : "Discovery Filters"}
+          </p>
+          {mode === "search" ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="field-label">Name / Keyword</label>
+                <input
+                  className="input w-full"
+                  placeholder="Search name…"
+                  value={filters.query}
+                  onChange={(e) => setFilters((f) => ({ ...f, query: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                />
+              </div>
+              <div>
+                <label className="field-label">Area</label>
+                <select
+                  className="input w-full"
+                  value={filters.location}
+                  onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
+                >
+                  {LOCATIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Property Type</label>
+                <select
+                  className="input w-full"
+                  value={filters.propertyType}
+                  onChange={(e) => setFilters((f) => ({ ...f, propertyType: e.target.value }))}
+                >
+                  {PROPERTY_TYPES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Temperature</label>
+                <select
+                  className="input w-full"
+                  value={filters.temperature}
+                  onChange={(e) => setFilters((f) => ({ ...f, temperature: e.target.value }))}
+                >
+                  {TEMPERATURES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  className="btn btn-primary w-full"
+                  onClick={handleSearch}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    <Icon name="Search" size={15} />
+                  )}
+                  {loading ? "Searching…" : "Search CRM"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div>
+                <label className="field-label">Industry</label>
+                <select
+                  className="input w-full"
+                  value={filters.industry}
+                  onChange={(e) => setFilters((f) => ({ ...f, industry: e.target.value }))}
+                >
+                  {INDUSTRIES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Area</label>
+                <select
+                  className="input w-full"
+                  value={filters.location}
+                  onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
+                >
+                  {LOCATIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Budget Range</label>
+                <select
+                  className="input w-full"
+                  value={filters.budgetRange}
+                  onChange={(e) => setFilters((f) => ({ ...f, budgetRange: e.target.value }))}
+                >
+                  {BUDGET_RANGES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Company Size</label>
+                <select
+                  className="input w-full"
+                  value={filters.companySize}
+                  onChange={(e) => setFilters((f) => ({ ...f, companySize: e.target.value }))}
+                >
+                  {COMPANY_SIZES.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  className="btn btn-primary w-full"
+                  onClick={handleSearch}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    <Icon name="Search" size={15} />
+                  )}
+                  {loading ? "Searching…" : "Find Leads"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* Results */}
+      {results.length === 0 && !loading && searched && (mode === "search" || hasExternalKey) && (
+        <EmptyState
+          icon="UserSearch"
+          title={mode === "search" ? "No matching leads found" : "No prospects found"}
+          hint={
+            mode === "search"
+              ? "Try broadening your filters or adding more leads to your CRM."
+              : "Try adjusting your discovery filters."
+          }
         />
       )}
 
-      {/* Filters */}
-      <Card className="p-5 mb-5">
-        <p className="section-label mb-4">Prospect Filters</p>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <div>
-            <label className="field-label">Industry</label>
-            <select
-              className="input w-full"
-              value={filters.industry}
-              onChange={(e) => setFilters((f) => ({ ...f, industry: e.target.value }))}
-            >
-              {INDUSTRIES.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Area</label>
-            <select
-              className="input w-full"
-              value={filters.location}
-              onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))}
-            >
-              {LOCATIONS.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Budget Range</label>
-            <select
-              className="input w-full"
-              value={budgetFilterValue}
-              onChange={(e) => handleBudgetChange(e.target.value)}
-            >
-              {BUDGET_RANGES.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">Company Size</label>
-            <select
-              className="input w-full"
-              value={filters.companySize}
-              onChange={(e) => setFilters((f) => ({ ...f, companySize: e.target.value }))}
-            >
-              {COMPANY_SIZES.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              className="btn btn-primary w-full"
-              onClick={handleSearch}
-              disabled={loading}
-            >
-              {loading ? (
-                <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <Icon name="Search" size={15} />
-              )}
-              {loading ? "Searching…" : "Find Leads"}
-            </button>
-          </div>
-        </div>
-      </Card>
-
-      {/* Results Table */}
-      {results.length === 0 && !loading && (
+      {results.length === 0 && !loading && !searched && (mode === "search" || hasExternalKey) && (
         <EmptyState
           icon="UserSearch"
-          title="No results yet"
-          hint="Set your filters above and click Find Leads to discover prospects."
+          title={mode === "search" ? "Search your CRM" : "Discover new prospects"}
+          hint={
+            mode === "search"
+              ? "Set filters above and click Search CRM to find matching leads from your database."
+              : "Set discovery filters above and click Find Leads to pull prospects from Apollo / Hunter / Clearbit."
+          }
         />
       )}
 
@@ -383,7 +584,7 @@ export function LeadGeniusClient({
 
       {results.length > 0 && !loading && (
         <Card className="overflow-hidden">
-          {/* Table header actions */}
+          {/* Table header */}
           <div className="flex items-center gap-3 p-4 border-b border-line">
             <input
               type="checkbox"
@@ -394,114 +595,192 @@ export function LeadGeniusClient({
             <span className="text-sm text-txt-dim">
               {selected.size > 0
                 ? `${selected.size} selected`
-                : `${results.length} prospects found`}
+                : `${results.length} ${mode === "search" ? "leads from your CRM" : "prospects found"}`}
             </span>
-            {isDemo && (
-              <span className="tag bg-gold-soft text-gold-bright ml-auto">Demo Data</span>
+            {mode === "search" && (
+              <span className="tag bg-[rgba(62,199,141,.14)] text-green ml-auto flex items-center gap-1">
+                <Icon name="Database" size={11} />
+                Real CRM data
+              </span>
             )}
           </div>
 
-          {/* Scrollable table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line">
-                  <th className="w-10 px-4 py-3"></th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Name</th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden md:table-cell">Title / Company</th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Email</th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Phone</th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden xl:table-cell">Area</th>
-                  <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden xl:table-cell">Budget</th>
-                  <th className="text-center px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Score</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((lead) => (
-                  <tr
-                    key={lead.id}
-                    className={`border-b border-line transition-colors hover:bg-panel-2 ${
-                      selected.has(lead.id) ? "bg-gold-soft/5" : ""
-                    }`}
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selected.has(lead.id)}
-                        onChange={() => toggleSelect(lead.id)}
-                        className="w-4 h-4 accent-[#d9a441] cursor-pointer"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0"
-                          style={{
-                            background: `hsl(${(lead.name.charCodeAt(0) * 37) % 360}, 55%, 35%)`,
-                            color: "#f8f4e9",
-                          }}
-                        >
-                          {lead.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()}
+            {mode === "search" ? (
+              /* CRM search results table */
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="w-10 px-4 py-3"></th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Name</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden md:table-cell">Property / Area</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Phone</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Email</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden xl:table-cell">Value</th>
+                    <th className="text-center px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Temp</th>
+                    <th className="text-center px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">In CRM</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(results as CrmLeadResult[]).map((lead) => (
+                    <tr
+                      key={lead.id}
+                      className={`border-b border-line transition-colors hover:bg-panel-2 ${
+                        selected.has(lead.id) ? "bg-gold-soft/5" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(lead.id)}
+                          onChange={() => toggleSelect(lead.id)}
+                          className="w-4 h-4 accent-[#d9a441] cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0"
+                            style={{
+                              background: `hsl(${(lead.name.charCodeAt(0) * 37) % 360}, 55%, 35%)`,
+                              color: "#f8f4e9",
+                            }}
+                          >
+                            {lead.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()}
+                          </div>
+                          <span className="font-medium truncate max-w-[120px]">{lead.name}</span>
                         </div>
-                        <span className="font-medium truncate max-w-[120px]">{lead.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 hidden md:table-cell">
-                      <div className="text-sm font-medium truncate max-w-[160px]">{lead.title}</div>
-                      <div className="text-xs text-txt-dim truncate max-w-[160px]">{lead.company}</div>
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {lead.enriched && lead.email ? (
-                        <span className="text-green">{lead.email}</span>
-                      ) : (
-                        <span className="text-txt-faint font-mono">{lead.emailMasked}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      {lead.enriched && lead.phone ? (
-                        <span className="text-green">{lead.phone}</span>
-                      ) : (
-                        <span className="text-txt-faint font-mono">{lead.phoneMasked}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 hidden xl:table-cell">
-                      <span className="text-txt-dim">{lead.location}</span>
-                    </td>
-                    <td className="px-4 py-3 hidden xl:table-cell">
-                      <span className="text-gold-bright font-semibold">{inr(lead.budget)}</span>
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {scoreBadge(lead.score)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {lead.enriched ? (
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="text-sm font-medium">{lead.propertyType}</div>
+                        <div className="text-xs text-txt-dim">{lead.location}</div>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell text-txt-dim">{lead.phone}</td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {lead.email ? (
+                          <span className="text-txt-dim">{lead.email}</span>
+                        ) : (
+                          <span className="text-txt-faint">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-gold-bright font-semibold">{lead.value > 0 ? inr(lead.value) : "—"}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {tempBadge(lead.temperature)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
                         <Badge tone="green">
                           <Icon name="CheckCircle" size={12} />
-                          Enriched
+                          In CRM
                         </Badge>
-                      ) : (
-                        <button
-                          className="btn btn-ghost text-xs py-1 px-2"
-                          onClick={() => handleEnrich(lead.id)}
-                          disabled={enrichingIds.has(lead.id)}
-                        >
-                          {enrichingIds.has(lead.id) ? (
-                            <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
-                          ) : (
-                            <Icon name="Zap" size={13} />
-                          )}
-                          Enrich
-                        </button>
-                      )}
-                    </td>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              /* Discover results table (external prospects) */
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line">
+                    <th className="w-10 px-4 py-3"></th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Name</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden md:table-cell">Title / Company</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Email</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden lg:table-cell">Phone</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden xl:table-cell">Area</th>
+                    <th className="text-left px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide hidden xl:table-cell">Budget</th>
+                    <th className="text-center px-4 py-3 text-txt-faint font-semibold text-[11px] uppercase tracking-wide">Score</th>
+                    <th className="px-4 py-3"></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {(results as DiscoverResult[]).map((lead) => (
+                    <tr
+                      key={lead.id}
+                      className={`border-b border-line transition-colors hover:bg-panel-2 ${
+                        selected.has(lead.id) ? "bg-gold-soft/5" : ""
+                      }`}
+                    >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected.has(lead.id)}
+                          onChange={() => toggleSelect(lead.id)}
+                          className="w-4 h-4 accent-[#d9a441] cursor-pointer"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0"
+                            style={{
+                              background: `hsl(${(lead.name.charCodeAt(0) * 37) % 360}, 55%, 35%)`,
+                              color: "#f8f4e9",
+                            }}
+                          >
+                            {lead.name.split(" ").map((w: string) => w[0]).slice(0, 2).join("").toUpperCase()}
+                          </div>
+                          <span className="font-medium truncate max-w-[120px]">{lead.name}</span>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 hidden md:table-cell">
+                        <div className="text-sm font-medium truncate max-w-[160px]">{lead.title}</div>
+                        <div className="text-xs text-txt-dim truncate max-w-[160px]">{lead.company}</div>
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {lead.enriched && lead.email ? (
+                          <span className="text-green">{lead.email}</span>
+                        ) : (
+                          <span className="text-txt-faint font-mono">{lead.emailMasked}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden lg:table-cell">
+                        {lead.enriched && lead.phone ? (
+                          <span className="text-green">{lead.phone}</span>
+                        ) : (
+                          <span className="text-txt-faint font-mono">{lead.phoneMasked}</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-txt-dim">{lead.location}</span>
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        <span className="text-gold-bright font-semibold">{inr(lead.budget)}</span>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        {scoreBadge(lead.score)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {lead.enriched ? (
+                          <Badge tone="green">
+                            <Icon name="CheckCircle" size={12} />
+                            Enriched
+                          </Badge>
+                        ) : (
+                          <button
+                            className="btn btn-ghost text-xs py-1 px-2"
+                            onClick={() => handleEnrich(lead.id)}
+                            disabled={enrichingIds.has(lead.id)}
+                          >
+                            {enrichingIds.has(lead.id) ? (
+                              <span className="animate-spin inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full" />
+                            ) : (
+                              <Icon name="Zap" size={13} />
+                            )}
+                            Enrich
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
           </div>
 
-          {/* Footer */}
+          {/* Footer actions */}
           {selected.size > 0 && (
             <div className="flex items-center gap-3 p-4 border-t border-line bg-gold-soft/5">
               <Icon name="CheckSquare" size={16} className="text-gold-bright" />
@@ -509,18 +788,20 @@ export function LeadGeniusClient({
               <button className="btn btn-ghost text-sm ml-auto" onClick={handleExportCsv}>
                 <Icon name="Download" size={14} /> Export CSV
               </button>
-              <button
-                className="btn btn-primary text-sm"
-                onClick={handleAddToCrm}
-                disabled={addingCrm}
-              >
-                {addingCrm ? (
-                  <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
-                ) : (
-                  <Icon name="UserPlus" size={14} />
-                )}
-                Add to CRM
-              </button>
+              {mode === "discover" && (
+                <button
+                  className="btn btn-primary text-sm"
+                  onClick={handleAddToCrm}
+                  disabled={addingCrm}
+                >
+                  {addingCrm ? (
+                    <span className="animate-spin inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full" />
+                  ) : (
+                    <Icon name="UserPlus" size={14} />
+                  )}
+                  Add to CRM
+                </button>
+              )}
             </div>
           )}
         </Card>

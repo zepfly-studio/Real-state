@@ -33,23 +33,44 @@ export default async function DashboardPage() {
     prisma.target.findMany({ where: { tenantId, month: "2026-06" } }),
   ]);
 
+  const now = new Date();
+  const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`;
+  const thisKey = monthKey(now);
+  const lastKey = monthKey(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+
   const totalRevenue = bookings.reduce((s, b) => s + Number(b.amount), 0);
   const activeLeads = leads.filter((l) => !["CLOSED_WON", "CLOSED_LOST"].includes(l.stage)).length;
-  const now = new Date();
-  const bookingsMTD = bookings.filter((b) => b.createdAt.getMonth() === now.getMonth() && b.createdAt.getFullYear() === now.getFullYear()).length;
-  const won = leads.filter((l) => l.stage === "CLOSED_WON").length;
+  const wonLeads = leads.filter((l) => l.stage === "CLOSED_WON");
+  const won = wonLeads.length;
   const conversion = leads.length ? (won / leads.length) * 100 : 0;
 
-  // Revenue per month (last 7) from closed-won lead value by createdAt month
-  const monthValues = new Array(7).fill(0);
-  const wonLeads = leads.filter((l) => l.stage === "CLOSED_WON");
-  // Distribute across months deterministically by month index
-  for (const l of wonLeads) {
-    const idx = (l.createdAt.getMonth() + 1) % 7;
-    monthValues[idx] += Number(l.value);
-  }
-  // Ensure visually alive even if sparse
-  const revenueData = MONTHS.map((m, i) => ({ month: m, value: monthValues[i] || 8000000 + i * 4200000 }));
+  // ── Real month-over-month deltas (no hardcoded figures) ──
+  const inMonth = <T extends { createdAt: Date }>(rows: T[], key: string) => rows.filter((r) => monthKey(r.createdAt) === key);
+  const revThis = inMonth(bookings, thisKey).reduce((s, b) => s + Number(b.amount), 0);
+  const revLast = inMonth(bookings, lastKey).reduce((s, b) => s + Number(b.amount), 0);
+  const leadsThis = inMonth(leads, thisKey).length;
+  const leadsLast = inMonth(leads, lastKey).length;
+  const bookingsMTD = inMonth(bookings, thisKey).length;
+  const bookingsLast = inMonth(bookings, lastKey).length;
+  const wonThis = inMonth(wonLeads, thisKey).length;
+  const convThis = leadsThis ? (wonThis / leadsThis) * 100 : 0;
+  const convLast = leadsLast ? (inMonth(wonLeads, lastKey).length / leadsLast) * 100 : 0;
+
+  // delta helpers — return undefined when there's no prior-period baseline (so we never fake a number)
+  const pctDelta = (cur: number, prev: number): string | undefined =>
+    prev > 0 ? `${cur - prev >= 0 ? "+" : ""}${(((cur - prev) / prev) * 100).toFixed(1)}%` : undefined;
+  const revenueDelta = pctDelta(revThis, revLast);
+  const leadsDelta = pctDelta(leadsThis, leadsLast);
+  const bookingsDelta = bookingsLast > 0 || bookingsMTD > 0 ? `${bookingsMTD - bookingsLast >= 0 ? "+" : ""}${bookingsMTD - bookingsLast}` : undefined;
+  const convDelta = convLast > 0 ? `${convThis - convLast >= 0 ? "+" : ""}${(convThis - convLast).toFixed(1)}%` : undefined;
+
+  // ── Real revenue chart: actual booking revenue for the last 7 calendar months ──
+  const revenueData = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (6 - i), 1);
+    const key = `${d.getFullYear()}-${d.getMonth()}`;
+    const value = bookings.filter((b) => monthKey(b.createdAt) === key).reduce((s, b) => s + Number(b.amount), 0);
+    return { month: d.toLocaleDateString("en-IN", { month: "short" }), value };
+  });
 
   // Pipeline
   const pipeline = (Object.keys(STAGE_META) as string[]).map((stage) => ({
@@ -81,10 +102,10 @@ export default async function DashboardPage() {
 
       {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPICard label="Total Revenue" value={inr(totalRevenue || 84000000)} delta="+12.4%" icon="IndianRupee" accent="gold" />
-        <KPICard label="Active Leads" value={String(activeLeads)} delta="+8.1%" icon="Users" accent="blue" />
-        <KPICard label="Bookings MTD" value={String(bookingsMTD || bookings.length)} delta="+3" icon="FileCheck2" accent="green" />
-        <KPICard label="Conversion" value={`${conversion.toFixed(1)}%`} delta="+1.9%" icon="TrendingUp" accent="purple" />
+        <KPICard label="Total Revenue" value={inr(totalRevenue)} delta={revenueDelta} icon="IndianRupee" accent="gold" />
+        <KPICard label="Active Leads" value={String(activeLeads)} delta={leadsDelta} icon="Users" accent="blue" />
+        <KPICard label="Bookings MTD" value={String(bookingsMTD)} delta={bookingsDelta} icon="FileCheck2" accent="green" />
+        <KPICard label="Conversion" value={`${conversion.toFixed(1)}%`} delta={convDelta} icon="TrendingUp" accent="purple" />
       </div>
 
       <div className="grid lg:grid-cols-3 gap-4 mb-6">

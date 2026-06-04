@@ -1,5 +1,6 @@
 import { requireUser, resolveTenantId } from "@/lib/session";
 import { getIntegration } from "@/lib/integrations";
+import { prisma } from "@/lib/prisma";
 import { LeadGeniusClient } from "./client";
 
 export default async function LeadGeniusPage() {
@@ -10,13 +11,20 @@ export default async function LeadGeniusPage() {
     return <div className="text-txt-dim p-8">No tenant context.</div>;
   }
 
-  const [apolloKey, hunterKey, clearbitKey] = await Promise.all([
+  const [apolloKey, hunterKey, clearbitKey, totalLeads] = await Promise.all([
     getIntegration(tenantId, "APOLLO"),
     getIntegration(tenantId, "HUNTER"),
     getIntegration(tenantId, "CLEARBIT"),
+    prisma.lead.count({ where: { tenantId } }),
   ]);
 
-  const isDemo = !apolloKey && !hunterKey && !clearbitKey;
+  const hasExternalKey = !!(apolloKey || hunterKey || clearbitKey);
 
-  return <LeadGeniusClient isDemo={isDemo} tenantId={tenantId} />;
+  return (
+    <LeadGeniusClient
+      hasExternalKey={hasExternalKey}
+      tenantId={tenantId}
+      totalLeads={totalLeads}
+    />
+  );
 }

@@ -17,6 +17,7 @@ const ENV_FALLBACK: Record<string, string | undefined> = {
   GMAPS: process.env.GMAPS_API_KEY,
   GMB: process.env.GMB_API_KEY,
   SMS: process.env.SMS_API_KEY,
+  MARKET_DATA: process.env.MARKET_DATA_API_KEY,
 };
 
 export interface IntegrationMeta {
@@ -41,6 +42,7 @@ export const INTEGRATIONS: IntegrationMeta[] = [
   { name: "GMAPS", label: "Google Maps", description: "Geocoding & maps for GMB extractor." },
   { name: "GMB", label: "Google Business Profile", description: "Pull reviews / insights & publish GMB posts." },
   { name: "SMS", label: "SMS Gateway", description: "Transactional SMS notifications." },
+  { name: "MARKET_DATA", label: "Market Data (PropEquity / Liases Foras)", description: "Live area-level ₹/sqft market index for Property Price Trends. Without it, trends are derived from your own inventory." },
 ];
 
 export interface IntegrationStatus {

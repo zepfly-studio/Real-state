@@ -1,5 +1,6 @@
 import { requireUser, resolveTenantId } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
+import { getIntegration } from "@/lib/integrations";
 import { PriceTrendsClient } from "./client";
 import { JAIPUR_AREAS } from "@/lib/format";
 
@@ -72,11 +73,17 @@ export default async function PriceTrendsPage() {
     };
   }).filter((r) => r.current !== null);
 
+  const canEdit = ["SUPER_ADMIN", "ADMIN", "MANAGER"].includes(user.role);
+  const marketConnected = !!(await getIntegration(tenantId, "MARKET_DATA"));
+
   return (
     <PriceTrendsClient
       chartData={chartData}
       changeTable={changeTable as any}
       availableAreas={JAIPUR_AREAS.filter((a) => byArea[a]?.length > 0)}
+      allAreas={JAIPUR_AREAS}
+      canEdit={canEdit}
+      marketConnected={marketConnected}
     />
   );
 }

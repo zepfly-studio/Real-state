@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser, resolveTenantId } from "@/lib/session";
+import { prisma } from "@/lib/prisma";
 import { getIntegration } from "@/lib/integrations";
 
 /**
  * GET /api/email-digest
- * Returns mock digest data (or, when GMAIL key is present, the note that
- * real Gmail integration would be called here).
+ * Returns a summary of real tenant DB data (overdue follow-ups, pending approvals,
+ * new leads). When GMAIL key is present, notes that the real inbox can also be pulled.
  * Never throws — always returns JSON.
  */
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     const user = await currentUser();
     if (!user) {
@@ -22,28 +23,45 @@ export async function GET(req: NextRequest) {
 
     const gmailKey = await getIntegration(tenantId, "GMAIL");
 
-    if (!gmailKey) {
-      // Demo mode — return mock summary stats
-      return NextResponse.json({
-        demo: true,
-        summary: { urgent: 4, needReply: 5, newsletters: 2, unread: 4 },
-        message: "Demo data. Connect Gmail in Settings → Integrations to summarise your real inbox.",
-      });
-    }
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const cutoff48h = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-    // Real path — call Gmail API here with gmailKey (OAuth token / client ID)
-    // const inbox = await fetchGmailInbox(gmailKey);
-    // const digest = await summariseWithAI(inbox);
+    const [overdueCount, pendingApprovals, newLeads48h] = await Promise.all([
+      prisma.lead
+        .count({
+          where: {
+            tenantId,
+            nextFollowUp: { lt: todayStart },
+            stage: { notIn: ["CLOSED_WON", "CLOSED_LOST"] },
+          },
+        })
+        .catch(() => 0),
+      prisma.approval
+        .count({ where: { tenantId, status: "PENDING" } })
+        .catch(() => 0),
+      prisma.lead
+        .count({
+          where: { tenantId, createdAt: { gte: cutoff48h } },
+        })
+        .catch(() => 0),
+    ]);
+
     return NextResponse.json({
-      demo: false,
-      summary: { urgent: 0, needReply: 0, newsletters: 0, unread: 0 },
-      message: "Gmail key detected. Implement fetchGmailInbox() to read the live inbox.",
+      source: "db",
+      summary: {
+        overdueFollowUps: overdueCount,
+        pendingApprovals,
+        newLeads48h,
+      },
+      gmail: gmailKey
+        ? { connected: true, message: "Gmail key detected — implement fetchGmailInbox() to also pull inbox." }
+        : { connected: false, message: "Connect Gmail in Settings → Integrations to also pull your inbox." },
     });
   } catch (err) {
     console.error("[email-digest]", err);
-    // Never throw — safe fallback
     return NextResponse.json(
-      { demo: true, error: "Failed to load digest. Showing mock data." },
+      { source: "error", message: "Failed to load digest summary." },
       { status: 200 }
     );
   }
