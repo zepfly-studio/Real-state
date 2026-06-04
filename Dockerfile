@@ -27,6 +27,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/next.config.js ./next.config.js
 EXPOSE 3000
-# Run migrations then start (override as needed in your orchestrator)
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+# Boot: apply migrations -> seed if empty -> next start (see scripts/deploy-start.mjs)
+CMD ["npm", "run", "start:prod"]
