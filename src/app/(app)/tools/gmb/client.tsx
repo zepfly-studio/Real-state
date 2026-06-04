@@ -730,7 +730,7 @@ export function GmbClient({
             {isLive ? (
               <Badge tone="green">Live</Badge>
             ) : (
-              <Badge tone="neutral">Demo</Badge>
+              <Badge tone="gold">Sample data</Badge>
             )}
           </div>
         }
@@ -739,7 +739,7 @@ export function GmbClient({
       {!isLive && (
         <ConnectBanner
           name="Google Business Profile + Google Maps"
-          enables="Built-in profile, reviews & insights work fully in-app."
+          enables="The reviews, ratings and insights below are SAMPLE data for demonstration. Connect Google Business Profile in Settings to pull your real reviews & insights."
         />
       )}
 

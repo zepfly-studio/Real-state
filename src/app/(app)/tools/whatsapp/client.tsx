@@ -176,25 +176,11 @@ function buildContactList(leads: Lead[]): Lead[] {
 // ─── Analytics chart data helper ─────────────────────────────────────────────
 
 function buildChartData(campaigns: Campaign[]) {
-  const data = campaigns.slice(0, 6).reverse().map((c, i) => ({
+  // Only real, recorded facts: recipients per broadcast. Delivery metrics need the WA API.
+  return campaigns.slice(0, 8).reverse().map((c) => ({
     month: new Date(c.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }),
-    Sent: Number(c.analytics?.sent ?? 0),
-    Delivered: Number(c.analytics?.delivered ?? 0),
-    Read: Number(c.analytics?.read ?? 0),
-    Replied: Number(c.analytics?.replied ?? 0),
+    Recipients: Number((c.analytics as any)?.recipients ?? (c.analytics as any)?.sent ?? 0),
   }));
-  if (data.length === 0) {
-    // Demo data
-    const labels = ["12 Jan", "3 Feb", "25 Feb", "10 Mar", "1 Apr", "15 May"];
-    return labels.map((month, i) => ({
-      month,
-      Sent: 120 + i * 40,
-      Delivered: 110 + i * 36,
-      Read: 80 + i * 28,
-      Replied: 18 + i * 9,
-    }));
-  }
-  return data;
 }
 
 // ─── Tab type ─────────────────────────────────────────────────────────────────
@@ -220,11 +206,13 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
 
   const contactList = buildContactList(leads);
 
-  // Total KPIs from campaigns
-  const totalSent = campaigns.reduce((s, c) => s + Number(c.analytics?.sent ?? 0), 0) || 1248;
-  const totalDelivered = campaigns.reduce((s, c) => s + Number(c.analytics?.delivered ?? 0), 0) || 1187;
-  const totalRead = campaigns.reduce((s, c) => s + Number(c.analytics?.read ?? 0), 0) || 892;
-  const totalReplied = campaigns.reduce((s, c) => s + Number(c.analytics?.replied ?? 0), 0) || 164;
+  // Real KPIs only — recipients reached across broadcasts. Delivery metrics require the WA API.
+  const totalRecipients = campaigns.reduce(
+    (s, c) => s + Number((c.analytics as any)?.recipients ?? (c.analytics as any)?.sent ?? 0),
+    0
+  );
+  const totalBroadcasts = campaigns.length;
+  const deliveryAvailable = hasKey; // only real once connected to WhatsApp Business
 
   async function handleSend() {
     setSending(true);
@@ -292,17 +280,22 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
       {!hasKey && (
         <ConnectBanner
           name="WhatsApp Business (360dialog / Interakt)"
-          enables="Built-in broadcast & conversation simulation is fully functional."
+          enables="Broadcasts compose real recipient segments from your CRM and are queued. Connect to actually send and unlock delivery analytics."
         />
       )}
 
-      {/* KPI row */}
+      {/* KPI row — real recipient/broadcast counts; delivery metrics only when connected */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        <KPICard label="Total Sent" value={String(totalSent)} icon="Send" accent="gold" />
-        <KPICard label="Delivered" value={String(totalDelivered)} delta={`+${((totalDelivered / totalSent) * 100).toFixed(0)}%`} icon="CheckCheck" accent="green" />
-        <KPICard label="Read" value={String(totalRead)} delta={`+${((totalRead / totalDelivered) * 100).toFixed(0)}%`} icon="Eye" accent="blue" />
-        <KPICard label="Replied" value={String(totalReplied)} delta={`+${((totalReplied / totalRead) * 100).toFixed(0)}%`} icon="Reply" accent="purple" />
+        <KPICard label="Recipients Reached" value={String(totalRecipients)} icon="Users" accent="gold" />
+        <KPICard label="Broadcasts" value={String(totalBroadcasts)} icon="Send" accent="blue" />
+        <KPICard label="Delivered" value={deliveryAvailable ? "0" : "—"} icon="CheckCheck" accent="green" />
+        <KPICard label="Read" value={deliveryAvailable ? "0" : "—"} icon="Eye" accent="purple" />
       </div>
+      {!deliveryAvailable && (
+        <p className="text-xs text-txt-faint -mt-3 mb-6">
+          Delivered / Read / Replied require the WhatsApp Business API — connect it in Settings for real delivery analytics.
+        </p>
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 mb-5 p-1 bg-bg-2 rounded-xl w-fit">
@@ -416,10 +409,9 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
                         <p className="text-xs text-txt-faint">{c.audience} · {timeAgo(c.createdAt)}</p>
                       </div>
                       <div className="flex items-center gap-3 text-xs text-txt-dim">
-                        <span title="Sent">📤 {Number(c.analytics?.sent ?? 0)}</span>
-                        <span title="Read">👁 {Number(c.analytics?.read ?? 0)}</span>
+                        <span title="Recipients">👥 {Number((c.analytics as any)?.recipients ?? (c.analytics as any)?.sent ?? 0)}</span>
                         <Badge tone={c.status === "SENT" ? "green" : c.status === "DRAFT" ? "neutral" : "gold"}>
-                          {c.status}
+                          {c.status === "SCHEDULED" ? "QUEUED" : c.status}
                         </Badge>
                       </div>
                     </div>
@@ -489,11 +481,11 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
                     {initials(activeContact.name)}
                   </div>
                   <div>
-                    <div className="font-semibold">{activeContact.name}</div>
-                    <div className="text-xs text-txt-dim flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-green inline-block" />
-                      Online · {activeContact.phone}
+                    <div className="font-semibold flex items-center gap-2">
+                      {activeContact.name}
+                      {!hasKey && <Badge tone="neutral">Preview</Badge>}
                     </div>
+                    <div className="text-xs text-txt-dim">{activeContact.phone}</div>
                   </div>
                   <div className="ml-auto flex gap-2">
                     <a
@@ -572,31 +564,29 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
       {/* ── Tab: Analytics ─────────────────────────────────────────────────── */}
       {tab === "analytics" && (
         <div className="space-y-5">
-          {/* Summary stats */}
+          {/* Summary stats — real figures only */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: "Campaigns run", value: campaigns.length || 6, icon: "Megaphone", accent: "gold" as const },
-              { label: "Avg. open rate", value: "75.1%", icon: "Eye", accent: "blue" as const },
-              { label: "Avg. reply rate", value: "13.2%", icon: "Reply", accent: "purple" as const },
-              { label: "Opt-outs", value: "3", icon: "UserMinus", accent: "red" as const },
+              { label: "Campaigns run", value: String(campaigns.length), icon: "Megaphone", accent: "gold" as const },
+              { label: "Recipients reached", value: String(totalRecipients), icon: "Users", accent: "blue" as const },
+              { label: "Avg. open rate", value: deliveryAvailable ? "0%" : "—", icon: "Eye", accent: "purple" as const },
+              { label: "Avg. reply rate", value: deliveryAvailable ? "0%" : "—", icon: "Reply", accent: "green" as const },
             ].map((s) => (
-              <KPICard key={s.label} label={s.label} value={String(s.value)} icon={s.icon} accent={s.accent} />
+              <KPICard key={s.label} label={s.label} value={s.value} icon={s.icon} accent={s.accent} />
             ))}
           </div>
 
-          {/* Trend chart */}
+          {/* Trend chart — recipients per broadcast (real). Delivery curves need the WA API. */}
           <Card className="p-5">
-            <h3 className="font-display font-bold text-lg mb-1">Campaign Performance</h3>
-            <p className="text-txt-dim text-sm mb-4">Sent / Delivered / Read / Replied across broadcasts</p>
-            <TrendLine
-              data={chartData}
-              keys={[
-                { key: "Sent", color: "#d9a441" },
-                { key: "Delivered", color: "#3ec78d" },
-                { key: "Read", color: "#5b8def" },
-                { key: "Replied", color: "#9b7ef0" },
-              ]}
-            />
+            <h3 className="font-display font-bold text-lg mb-1">Broadcast Reach</h3>
+            <p className="text-txt-dim text-sm mb-4">
+              Recipients per broadcast.{!deliveryAvailable && " Connect WhatsApp Business for delivered / read / replied curves."}
+            </p>
+            {chartData.length > 0 ? (
+              <TrendLine data={chartData} keys={[{ key: "Recipients", color: "#d9a441" }]} />
+            ) : (
+              <EmptyState icon="Megaphone" title="No broadcasts yet" hint="Send a broadcast to see reach here." />
+            )}
           </Card>
 
           {/* Campaign table */}
@@ -615,7 +605,7 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
                     <tr className="border-b border-line text-txt-faint text-left text-xs uppercase tracking-wide">
                       <th className="pb-3 pr-4 font-semibold">Campaign</th>
                       <th className="pb-3 pr-4 font-semibold">Audience</th>
-                      <th className="pb-3 pr-4 font-semibold text-right">Sent</th>
+                      <th className="pb-3 pr-4 font-semibold text-right">Recipients</th>
                       <th className="pb-3 pr-4 font-semibold text-right">Delivered</th>
                       <th className="pb-3 pr-4 font-semibold text-right">Read</th>
                       <th className="pb-3 pr-4 font-semibold text-right">Replied</th>
@@ -630,13 +620,13 @@ export function WhatsAppClient({ campaigns, leads, hasKey, tenantId }: Props) {
                           <div className="text-xs text-txt-faint">{timeAgo(c.createdAt)}</div>
                         </td>
                         <td className="py-3 pr-4 text-txt-dim">{c.audience}</td>
-                        <td className="py-3 pr-4 text-right font-medium">{Number(c.analytics?.sent ?? 0)}</td>
-                        <td className="py-3 pr-4 text-right text-green">{Number(c.analytics?.delivered ?? 0)}</td>
-                        <td className="py-3 pr-4 text-right text-blue">{Number(c.analytics?.read ?? 0)}</td>
-                        <td className="py-3 pr-4 text-right text-purple">{Number(c.analytics?.replied ?? 0)}</td>
+                        <td className="py-3 pr-4 text-right font-medium">{Number((c.analytics as any)?.recipients ?? (c.analytics as any)?.sent ?? 0)}</td>
+                        <td className="py-3 pr-4 text-right text-green">{(c.analytics as any)?.delivered ?? "—"}</td>
+                        <td className="py-3 pr-4 text-right text-blue">{(c.analytics as any)?.read ?? "—"}</td>
+                        <td className="py-3 pr-4 text-right text-purple">{(c.analytics as any)?.replied ?? "—"}</td>
                         <td className="py-3">
                           <Badge tone={c.status === "SENT" ? "green" : c.status === "DRAFT" ? "neutral" : c.status === "FAILED" ? "red" : "gold"}>
-                            {c.status}
+                            {c.status === "SCHEDULED" ? "QUEUED" : c.status}
                           </Badge>
                         </td>
                       </tr>

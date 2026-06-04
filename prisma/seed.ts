@@ -283,7 +283,7 @@ async function main() {
   // ── Campaigns ──
   await prisma.campaign.createMany({
     data: [
-      { tenantId: tenant.id, name: "Diwali Dhamaka Offer", channel: CampaignChannel.WHATSAPP, template: "🪔 Diwali special! Book a 3BHK at Shubh Heights & save ₹2.5L. Reply YES to know more.", audience: "Hot leads", status: CampaignStatus.SENT, analytics: { sent: 420, delivered: 408, read: 311, replied: 47 } },
+      { tenantId: tenant.id, name: "Diwali Dhamaka Offer", channel: CampaignChannel.WHATSAPP, template: "🪔 Diwali special! Book a 3BHK at Shubh Heights & save ₹2.5L. Reply YES to know more.", audience: "Hot leads", status: CampaignStatus.SCHEDULED, analytics: { recipients: 18, delivered: null, read: null, replied: null } },
       { tenantId: tenant.id, name: "New Launch — Shubh Enclave", channel: CampaignChannel.INSTAGRAM, template: "Introducing Shubh Enclave on Ajmer Road 🏡", audience: "All", status: CampaignStatus.SCHEDULED, scheduledAt: new Date(Date.now() + 2 * 86400000), analytics: {} },
       { tenantId: tenant.id, name: "Weekend Site Visit Drive", channel: CampaignChannel.SMS, template: "Free cab for site visits this weekend! Call 0141-4001234.", audience: "Warm leads", status: CampaignStatus.DRAFT, analytics: {} },
     ],

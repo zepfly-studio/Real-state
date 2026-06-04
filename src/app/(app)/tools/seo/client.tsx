@@ -229,9 +229,13 @@ function KeywordResearch() {
 
       {rows.length > 0 && (
         <>
+          <div className="card p-3 text-xs text-txt-dim flex items-center gap-2 border-dashed">
+            <Icon name="Info" size={14} className="text-gold-bright" />
+            <span><strong className="text-txt">Sample metrics</strong> for demonstration. Connect Google Search Console / SEMrush / Ahrefs for live search volumes, difficulty & CPC.</span>
+          </div>
           <div className="flex items-center gap-4 text-sm text-txt-dim">
-            <span className="font-semibold text-txt">{rows.length} keywords found</span>
-            <span>Combined volume: <strong className="text-gold-bright">{totalVolume.toLocaleString("en-IN")}/mo</strong></span>
+            <span className="font-semibold text-txt">{rows.length} keyword ideas</span>
+            <span>Est. combined volume: <strong className="text-gold-bright">{totalVolume.toLocaleString("en-IN")}/mo</strong></span>
           </div>
           <Card className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -343,6 +347,10 @@ function SiteAudit() {
 
       {scores && (
         <>
+          <div className="card p-3 text-xs text-txt-dim flex items-center gap-2 border-dashed">
+            <Icon name="Info" size={14} className="text-gold-bright" />
+            <span><strong className="text-txt">Sample audit</strong> for demonstration. Connect Google PageSpeed / Search Console for a live crawl of your real site.</span>
+          </div>
           <Card className="p-5">
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div>

@@ -39,13 +39,18 @@ export async function POST(req: NextRequest) {
     }
 
     const whatsappKey = await getIntegration(tenantId, "WHATSAPP");
-    const count = Number(recipientCount) || 10;
+    const recipients = Number(recipientCount) || 0;
 
-    // Simulate realistic delivery funnel
-    const sent = count;
-    const delivered = Math.round(sent * (0.90 + Math.random() * 0.07)); // 90–97%
-    const read = Math.round(delivered * (0.68 + Math.random() * 0.15)); // 68–83%
-    const replied = Math.round(read * (0.10 + Math.random() * 0.12)); // 10–22%
+    // We only record REAL facts: how many recipients the segment matched and when it was queued.
+    // Delivery metrics (delivered/read/replied) genuinely require the WhatsApp Business API —
+    // we never fabricate them. They stay null until a real provider reports them back.
+    const analytics: Record<string, number | string | null> = {
+      recipients,
+      queuedAt: new Date().toISOString(),
+      delivered: null,
+      read: null,
+      replied: null,
+    };
 
     const campaign = await prisma.campaign.create({
       data: {
@@ -54,42 +59,36 @@ export async function POST(req: NextRequest) {
         channel: CampaignChannel.WHATSAPP,
         template: template.slice(0, 2000),
         audience,
-        status: CampaignStatus.SENT,
-        analytics: { sent, delivered, read, replied },
+        // Without a provider it is queued, not actually delivered.
+        status: whatsappKey ? CampaignStatus.SENT : CampaignStatus.SCHEDULED,
+        analytics: analytics as any,
       },
     });
 
     await audit({
       tenantId,
-      action: "WHATSAPP_BROADCAST_SENT",
+      action: whatsappKey ? "WHATSAPP_BROADCAST_SENT" : "WHATSAPP_BROADCAST_QUEUED",
       entity: "Campaign",
       entityId: campaign.id,
       performedById: user.id,
-      meta: {
-        audience,
-        recipientCount: count,
-        demo: !whatsappKey,
-        analytics: { sent, delivered, read, replied },
-      },
+      meta: { audience, recipients, live: !!whatsappKey },
     });
 
     if (!whatsappKey) {
-      // Demo mode — no real send, but we still create the campaign record
       return NextResponse.json({
         success: true,
-        demo: true,
-        campaign: { id: campaign.id, analytics: { sent, delivered, read, replied } },
-        message: `Demo: Campaign created with ${sent} simulated sends. Connect WhatsApp Business in Settings to go live.`,
+        live: false,
+        campaign: { id: campaign.id, recipients },
+        message: `Broadcast queued for ${recipients} recipients. Connect WhatsApp Business in Settings to actually send and get delivery analytics.`,
       });
     }
 
-    // Real send path — integrate with 360dialog / Interakt here
-    // Example: await send360Dialog(whatsappKey, { template, audience, count });
+    // Real send path — integrate with 360dialog / Interakt here, then update analytics with provider data.
     return NextResponse.json({
       success: true,
-      demo: false,
-      campaign: { id: campaign.id, analytics: { sent, delivered, read, replied } },
-      message: `Campaign dispatched via WhatsApp Business API to ${sent} recipients.`,
+      live: true,
+      campaign: { id: campaign.id, recipients },
+      message: `Broadcast dispatched via WhatsApp Business API to ${recipients} recipients.`,
     });
   } catch (err) {
     console.error("[whatsapp/send]", err);
