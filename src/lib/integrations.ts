@@ -20,7 +20,7 @@ const ENV_FALLBACK: Record<string, string | undefined> = {
   MARKET_DATA: process.env.MARKET_DATA_API_KEY,
   // Lead Generation add-on
   SMARTLEAD: process.env.SMARTLEAD_API_KEY,
-  GEMINI: process.env.GEMINI_API_KEY,
+  OPENAI: process.env.OPENAI_API_KEY,
   EVOLUTION_URL: process.env.EVOLUTION_API_URL,
   EVOLUTION_INSTANCE: process.env.EVOLUTION_INSTANCE,
   EVOLUTION_KEY: process.env.EVOLUTION_API_KEY,
@@ -52,7 +52,7 @@ export const INTEGRATIONS: IntegrationMeta[] = [
   { name: "MARKET_DATA", label: "Market Data (PropEquity / Liases Foras)", description: "Live area-level ₹/sqft market index for Property Price Trends. Without it, trends are derived from your own inventory." },
   // ── Lead Generation add-on (also connectable from Lead Generation → Setup) ──
   { name: "SMARTLEAD", label: "Smartlead", description: "Lead Generation — cold-email campaigns, mailboxes, replies and analytics." },
-  { name: "GEMINI", label: "Google Gemini", description: "Lead Generation — the voice assistant and spoken-brief reader." },
+  { name: "OPENAI", label: "ChatGPT (OpenAI)", description: "Lead Generation — the voice assistant and spoken-brief reader." },
   { name: "EVOLUTION_URL", label: "WhatsApp (Evolution) — server URL", description: "Lead Generation — address of your Evolution / CloudStation server." },
   { name: "EVOLUTION_INSTANCE", label: "WhatsApp (Evolution) — instance", description: "Lead Generation — the WhatsApp instance name, exactly as in Evolution." },
   { name: "EVOLUTION_KEY", label: "WhatsApp (Evolution) — API key", description: "Lead Generation — send and read WhatsApp chats and auto-replies." },

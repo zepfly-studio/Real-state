@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { lgContext, isResponse } from "@/lib/leadgen/guard";
 import { guarded, bad } from "@/lib/leadgen/respond";
-import { geminiFor, type ToolCall } from "@/lib/leadgen/gemini";
+import { llmFor, type ToolCall } from "@/lib/leadgen/llm";
 import { prepare, readJson, runReadTool, systemPrompt, TOOLS, WRITE_TOOLS, type Pending } from "@/lib/leadgen/assistant";
 
 const MAX_STEPS = 6;
 
 /**
  * POST /api/leadgen/assistant/chat  { messages: [{role, content}], page }
- * Runs Gemini with the tools. Reads happen immediately; anything that sends, spends or
+ * Runs ChatGPT with the tools. Reads happen immediately; anything that sends, spends or
  * changes data comes back in `pending` for the person to confirm — it is NOT done here.
  */
 export async function POST(req: Request) {
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
     const messages: Array<{ role: string; content: string }> = Array.isArray(body.messages) ? body.messages.slice(-16) : [];
     if (!messages.length || messages[messages.length - 1].role !== "user") return bad("The last message must be from the user.");
 
-    const g = await geminiFor(ctx.tenantId, systemPrompt(String(body.page ?? "").slice(0, 120)), TOOLS);
+    const g = await llmFor(ctx.tenantId, systemPrompt(String(body.page ?? "").slice(0, 120)), TOOLS);
     for (const m of messages) {
       if (!g.messages.length && m.role !== "user") continue; // the first turn must be the user's
       const content = String(m.content ?? "").slice(0, 4000);

@@ -36,6 +36,9 @@ export const EVENT_LABEL: Record<string, string> = {
   n8n_dispatch: "Automation started",
   n8n_dispatch_failed: "Automation not running",
   send_failed: "Message not delivered",
+  lead_search_done: "Sellers found",
+  lead_search_empty: "No sellers found",
+  lead_search_failed: "Lead search failed",
 };
 
 /** Phone numbers match on their last 10 digits (+91 / 0 / spaces vary). */

@@ -91,8 +91,8 @@ Add a key → the matching tool flips from built-in to live automatically (resol
 ## 🎯 Lead Generation add-on
 
 A **LEAD GENERATION** sidebar group: voice/text campaign launch → sellers found by n8n → Smartlead email →
-WhatsApp → Gemini auto-replies → one-click **Add to CRM**. Includes a unified reply inbox, Smartlead campaign
-management with full analytics, mailbox health, and a Gemini voice assistant (**Shift + D**) that drafts
+WhatsApp → ChatGPT auto-replies → one-click **Add to CRM**. Includes a unified reply inbox, Smartlead campaign
+management with full analytics, mailbox health, and a ChatGPT voice assistant (**Shift + D**) that drafts
 replies and acts only after you confirm. Additive only — no existing CRM table or page changes.
 
 Setup, credentials and the n8n workflow: **[docs/LEAD_GENERATION.md](docs/LEAD_GENERATION.md)**.

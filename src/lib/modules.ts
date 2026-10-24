@@ -36,7 +36,7 @@ export const MODULES: ModuleDef[] = [
   { key: "ceo", label: "CEO Space", href: "/ceo", icon: "Crown", group: "WORKSPACE", roles: OWNER },
   { key: "partners", label: "Channel Partners", href: "/partners", icon: "Handshake", group: "WORKSPACE", roles: [...MGMT, "CHANNEL_PARTNER"] },
 
-  // ── LEAD GENERATION (add-on: voice-launched campaigns, Smartlead email, WhatsApp, Gemini assistant) ──
+  // ── LEAD GENERATION (add-on: voice-launched campaigns, Smartlead email, WhatsApp, ChatGPT assistant) ──
   { key: "leadgen", label: "Lead Gen Overview", href: "/leadgen/overview", icon: "Rocket", group: "LEAD GENERATION", roles: STAFF },
   { key: "leadgen-leads", label: "Prospects", href: "/leadgen/leads", icon: "UserSearch", group: "LEAD GENERATION", roles: STAFF },
   { key: "leadgen-inbox", label: "Reply Inbox", href: "/leadgen/inbox", icon: "MessagesSquare", group: "LEAD GENERATION", roles: STAFF },

@@ -1,16 +1,17 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import type { ToolSpec } from "./gemini";
+import type { ToolSpec } from "./llm";
 import { LG_STAGES, phoneKey } from "./stages";
 import { listCampaigns as listLgCampaigns, listLeads, listThreads, metrics } from "./queries";
 import { campaignsWithStats, inboxQuery, normalizeInboxItem, SmartleadNotConnected, SmartleadError, totals, clearCache, sl, normalizeHistory } from "./smartlead";
 import { sendText, WhatsAppError } from "./evolution";
 import { findLead, logEvent, logMessage } from "./db";
 import { launchCampaign } from "./launch";
+import { parseBrief } from "./intent";
 import { copyToCrm } from "./crm-link";
 
 /**
- * The Gemini assistant's tools.
+ * The ChatGPT assistant's tools.
  *  - READ tools run freely.
  *  - WRITE tools (send, launch, start/stop, mark, add to CRM) are only ever PROPOSED by the model.
  *    The person confirms in the UI, then /api/leadgen/assistant/execute re-validates and performs them.
@@ -190,7 +191,20 @@ export async function prepare(tenantId: string, name: string, a: Record<string, 
   if (name === "launch_campaign") {
     const brief = String(a.brief ?? "").trim();
     if (brief.length < 5) return { problem: "Need a brief like '50 sellers in Mansarovar'." };
-    return { pending: { tool: name, args: { brief }, title: "Launch a new campaign", preview: brief } };
+    // Show the person exactly what will be launched; the confirmed values are what n8n receives.
+    const parsed =
+      a.location !== undefined && a.lead_count !== undefined
+        ? { location: String(a.location).trim().slice(0, 120), leadCount: Math.max(0, Math.min(5000, Math.round(Number(a.lead_count) || 0))) }
+        : await parseBrief(tenantId, brief);
+    if (!parsed.location || parsed.leadCount < 1) return { problem: "Ask which area and how many sellers to find — the brief doesn't say." };
+    return {
+      pending: {
+        tool: name,
+        args: { brief, location: parsed.location, lead_count: parsed.leadCount },
+        title: "Launch a new campaign",
+        preview: `Find ${parsed.leadCount} sellers in ${parsed.location}, save them here, email them (Smartlead), WhatsApp them 2 hours later, and let the AI answer replies.`,
+      },
+    };
   }
   if (name === "set_email_campaign") {
     const action = String(a.action ?? "");
@@ -260,7 +274,7 @@ export async function perform(tenantId: string, userId: string, tool: string, a:
     return "Email reply sent.";
   }
   if (tool === "launch_campaign") {
-    const r = await launchCampaign(tenantId, userId, String(a.brief));
+    const r = await launchCampaign(tenantId, userId, String(a.brief), { location: String(a.location), leadCount: Number(a.lead_count) });
     return r.message;
   }
   if (tool === "set_email_campaign") {

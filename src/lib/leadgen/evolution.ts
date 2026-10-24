@@ -69,6 +69,7 @@ export async function sendText(tenantId: string, phone: string, text: string) {
   if (number.length < 8) throw new WhatsAppError(422, "That doesn't look like a valid phone number.");
   const { status, body } = await call(cfg, "POST", `/message/sendText/${encodeURIComponent(cfg.instance)}`, { number, text });
   if (status === 401) throw new WhatsAppError(401, "The WhatsApp server rejected the API key.");
+  if (status >= 500) throw new WhatsAppError(502, `The WhatsApp server is down (HTTP ${status}), so the message wasn't sent.`);
   if (status >= 400 || !body?.key?.id) {
     throw new WhatsAppError(status >= 500 ? 502 : 422, reason(body) || "WhatsApp didn't accept the message.");
   }
@@ -86,6 +87,7 @@ export async function instanceInfo(tenantId: string): Promise<InstanceInfo> {
   const cfg = await evolutionConfig(tenantId);
   const { status, body } = await call(cfg, "GET", "/instance/fetchInstances");
   if (status === 401) throw new WhatsAppError(401, "The WhatsApp server rejected the API key.");
+  if (status >= 500) throw new WhatsAppError(502, `The WhatsApp server is down (HTTP ${status}). Start your Evolution / CloudStation service, then test again.`);
   if (status >= 400 || !Array.isArray(body)) throw new WhatsAppError(502, "The WhatsApp server returned an unexpected reply.");
   const names = body.map((i: any) => (i?.instance ?? i)?.name ?? (i?.instance ?? i)?.instanceName).filter(Boolean);
   for (const item of body) {

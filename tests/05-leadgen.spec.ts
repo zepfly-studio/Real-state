@@ -37,7 +37,7 @@ test.describe("Lead Generation (admin, no keys)", () => {
     await expect(page.getByText(/Connect Smartlead/i).first()).toBeVisible();
   });
 
-  test("assistant opens with Shift+D and asks for a Gemini key", async ({ page }) => {
+  test("assistant opens with Shift+D and asks for a ChatGPT key", async ({ page }) => {
     await page.goto("/leadgen/overview");
     await page.locator("body").click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("Shift+D");
@@ -51,7 +51,12 @@ test.describe("Lead Generation (admin, no keys)", () => {
   test("launching without n8n saves the campaign and says why it didn't start", async ({ page }) => {
     await page.goto("/leadgen/overview");
     await page.getByLabel("Campaign brief").fill("find 25 sellers in Mansarovar");
-    await page.getByRole("button", { name: /Launch campaign/ }).click();
+    await page.getByRole("button", { name: /Review/ }).click();
+    // The AI's reading is shown for approval before anything is launched.
+    const confirm = page.getByRole("group", { name: "Confirm campaign" });
+    await expect(confirm.getByLabel("Area")).toHaveValue("Mansarovar");
+    await expect(confirm.getByLabel("Sellers to find")).toHaveValue("25");
+    await confirm.getByRole("button", { name: /Launch campaign/ }).click();
     await expect(page.getByText(/automation isn't running/i).first()).toBeVisible();
     await expect(page.getByText("Mansarovar Campaign").first()).toBeVisible();
   });

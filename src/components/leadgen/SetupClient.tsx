@@ -9,7 +9,7 @@ interface Setup { fields: SField[]; token: string | null; urls: { sync: string; 
 const TOOLS: Array<{ id: string; title: string; icon: string; blurb: string; unlocks: string }> = [
   { id: "smartlead", title: "Smartlead", icon: "Mail", blurb: "Cold-email campaigns, mailboxes, replies and analytics.", unlocks: "Email Campaigns, Mailboxes and email replies in the Inbox" },
   { id: "whatsapp", title: "WhatsApp (Evolution / CloudStation)", icon: "MessageCircle", blurb: "WhatsApp chats, AI auto-replies and manual messages.", unlocks: "WhatsApp chats in the Inbox, and sending replies" },
-  { id: "gemini", title: "Google Gemini", icon: "Sparkles", blurb: "Powers the voice assistant (Shift + D) and reads spoken campaign briefs.", unlocks: "The assistant that drafts replies, launches campaigns and runs the section for you" },
+  { id: "openai", title: "ChatGPT (OpenAI)", icon: "Sparkles", blurb: "Powers the voice assistant (Shift + D) and reads spoken campaign briefs.", unlocks: "The assistant that drafts replies, launches campaigns and runs the section for you" },
   { id: "n8n", title: "n8n automation", icon: "Workflow", blurb: "Finds sellers and sends the first email and WhatsApp messages.", unlocks: "Launching campaigns from the Overview" },
 ];
 

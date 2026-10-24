@@ -8,7 +8,7 @@ import { LG_STAGES, phoneKey } from "@/lib/leadgen/stages";
  * POST /api/leadgen/sync — the n8n workflow reports what it did.
  * Header:  X-Leadgen-Token: <the workspace token from Lead Generation → Setup>
  * Body:    { event, campaign_id?, lead_id?, phone?, data: {...} }
- * Events:  new_lead · status_change · whatsapp_message · send_failed
+ * Events:  new_lead · status_change · whatsapp_message · send_failed · campaign_scraped · campaign_failed
  */
 export async function POST(req: Request) {
   const tenantId = await lgTokenTenant(req);
@@ -79,6 +79,32 @@ export async function POST(req: Request) {
       const reason = String(d.reason ?? "delivery failed").slice(0, 200);
       await logEvent(tenantId, "send_failed", `${channel} to ${phoneIn || "unknown"} not delivered: ${reason}`, { campaignId: lead?.campaignId, leadId: lead?.id });
       return NextResponse.json({ ok: true, linked_lead: Boolean(lead) });
+    }
+
+    // The lead search (Apify) finished: say how many sellers were found.
+    if (kind === "campaign_scraped") {
+      if (!campaignId) return NextResponse.json({ error: "campaign_scraped requires a campaign_id from this workspace" }, { status: 400 });
+      const count = Math.max(0, Math.round(Number(d.count) || 0));
+      const c = await prisma.lgCampaign.findFirst({ where: { id: campaignId, tenantId } });
+      // n8n can report both outcomes for one run; a failed search must stay failed.
+      if (c?.status === "FAILED") return NextResponse.json({ ok: true, ignored: "campaign already failed" });
+      await prisma.lgCampaign.update({ where: { id: campaignId }, data: { status: count > 0 ? "ACTIVE" : "COMPLETED" } });
+      await logEvent(tenantId, count > 0 ? "lead_search_done" : "lead_search_empty",
+        count > 0 ? `${c?.name}: found ${count} seller${count === 1 ? "" : "s"}` : `${c?.name}: no sellers found${c?.targetLocation ? ` in ${c.targetLocation}` : ""}`, { campaignId });
+      return NextResponse.json({ ok: true, count });
+    }
+
+    // The lead search failed (wrong Apify actor, no credit, timeout…): show it instead of "Finding leads" forever.
+    if (kind === "campaign_failed") {
+      if (!campaignId) return NextResponse.json({ error: "campaign_failed requires a campaign_id from this workspace" }, { status: 400 });
+      const rawReason = String(d.reason ?? "unknown error");
+      // Provider errors arrive as `404 - "{ \"error\": { \"message\": \"Actor was not found\" } }"` — keep the human part.
+      const inner = rawReason.replace(/\\"/g, '"').match(/"message"\s*:\s*"([^"]+)"/)?.[1];
+      const code = rawReason.match(/^(\d{3})/)?.[1];
+      const reason = (inner ? `${inner}${code ? ` (${code})` : ""}` : rawReason).replace(/\s+/g, " ").slice(0, 200);
+      await prisma.lgCampaign.update({ where: { id: campaignId }, data: { status: "FAILED" } });
+      await logEvent(tenantId, "lead_search_failed", `Lead search failed: ${reason}`, { campaignId });
+      return NextResponse.json({ ok: true });
     }
 
     return NextResponse.json({ error: `Unknown event '${body.event}'` }, { status: 400 });

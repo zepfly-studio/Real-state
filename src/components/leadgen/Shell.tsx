@@ -13,7 +13,7 @@ export interface Tab {
   icon: string;
 }
 
-/** Wraps every Lead Generation page: sub-navigation, toasts and the Gemini assistant. */
+/** Wraps every Lead Generation page: sub-navigation, toasts and the ChatGPT assistant. */
 export function Shell({ tabs, children }: { tabs: Tab[]; children: ReactNode }) {
   const pathname = usePathname();
   const active = (href: string) => pathname === href || pathname.startsWith(href + "/");

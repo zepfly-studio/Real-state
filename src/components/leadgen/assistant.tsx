@@ -6,9 +6,9 @@ import { Icon } from "@/components/Icon";
 import { ApiError, lg, Spinner } from "./kit";
 
 /**
- * Gemini voice assistant — browser side.
+ * ChatGPT voice assistant — browser side.
  * Speech in/out uses the browser's own engines (no extra key). Understanding and tool use happen on the
- * server with the workspace's Gemini key. The assistant never sends or changes anything by itself:
+ * server with the workspace's ChatGPT (OpenAI) key. The assistant never sends or changes anything by itself:
  * it proposes, the person says "yes" (or taps Confirm), and only then does /execute run.
  */
 
@@ -369,7 +369,7 @@ export function AssistantPanel() {
   }, [a.messages, a.interim, a.pending.length, a.busy, a.open]);
   if (!a.open) return null;
 
-  const status = a.listening ? "Listening…" : a.speaking ? "Speaking…" : a.busy ? "Working on it…" : a.connected ? "Gemini · ready" : "Not connected";
+  const status = a.listening ? "Listening…" : a.speaking ? "Speaking…" : a.busy ? "Working on it…" : a.connected ? "ChatGPT · ready" : "Not connected";
 
   return (
     <section
@@ -405,7 +405,7 @@ export function AssistantPanel() {
               <Icon name="PlugZap" size={19} />
             </span>
             <h3 className="mt-3 text-sm font-semibold">Switch the assistant on</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-txt-dim">Paste your Gemini API key once under Lead Generation → Setup. After that you can just talk to it.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-txt-dim">Paste your ChatGPT (OpenAI) API key once under Lead Generation → Setup. After that you can just talk to it.</p>
             <Link href="/leadgen/setup" onClick={() => a.setOpen(false)} className="btn btn-primary mt-4 inline-flex">
               Go to Setup
             </Link>

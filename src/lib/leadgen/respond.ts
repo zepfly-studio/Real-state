@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { SmartleadError, SmartleadNotConnected } from "./smartlead";
 import { WhatsAppError, WhatsAppNotConnected } from "./evolution";
-import { GeminiError, GeminiNotConnected } from "./gemini";
+import { LlmError, LlmNotConnected } from "./llm";
 
 /**
  * Run a route body and turn the integration errors into clean, plain-language JSON.
@@ -20,9 +20,9 @@ export async function guarded(fn: () => Promise<NextResponse | unknown>): Promis
       return NextResponse.json({ code: "whatsapp_not_connected", error: "Connect WhatsApp under Lead Generation → Setup first." }, { status: 409 });
     if (e instanceof WhatsAppError)
       return NextResponse.json({ error: e.detail }, { status: [401, 409, 422].includes(e.status) ? e.status : 502 });
-    if (e instanceof GeminiNotConnected)
-      return NextResponse.json({ code: "assistant_not_connected", error: "Add your Gemini API key under Lead Generation → Setup to switch the assistant on." }, { status: 409 });
-    if (e instanceof GeminiError) return NextResponse.json({ error: e.detail }, { status: e.status === 401 ? 401 : 502 });
+    if (e instanceof LlmNotConnected)
+      return NextResponse.json({ code: "assistant_not_connected", error: "Add your ChatGPT (OpenAI) API key under Lead Generation → Setup to switch the assistant on." }, { status: 409 });
+    if (e instanceof LlmError) return NextResponse.json({ error: e.detail }, { status: e.status === 401 ? 401 : 502 });
     console.error("[leadgen]", e);
     return NextResponse.json({ error: "Something went wrong. Please try again." }, { status: 500 });
   }

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getIntegration } from "@/lib/integrations";
 import { lgContext, isResponse } from "@/lib/leadgen/guard";
-import { testGemini } from "@/lib/leadgen/gemini";
+import { testLlm } from "@/lib/leadgen/llm";
 import { instanceInfo, WhatsAppError, WhatsAppNotConnected } from "@/lib/leadgen/evolution";
 import { campaignsWithStats, clearCache, SmartleadError, SmartleadNotConnected } from "@/lib/leadgen/smartlead";
 
-/** POST { tool: "smartlead" | "whatsapp" | "gemini" | "n8n" } — always answers 200 { ok, message }; a failed test is data. */
+/** POST { tool: "smartlead" | "whatsapp" | "openai" | "n8n" } — always answers 200 { ok, message }; a failed test is data. */
 export async function POST(req: Request) {
   const ctx = await lgContext({ manage: true });
   if (isResponse(ctx)) return ctx;
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       const items = await campaignsWithStats(t, true);
       return NextResponse.json({ ok: true, message: `Connected. Found ${items.length} campaign${items.length === 1 ? "" : "s"}.` });
     }
-    if (tool === "gemini") return NextResponse.json(await testGemini(t));
+    if (tool === "openai") return NextResponse.json(await testLlm(t));
     if (tool === "whatsapp") {
       const info = await instanceInfo(t);
       if (!info.found) {

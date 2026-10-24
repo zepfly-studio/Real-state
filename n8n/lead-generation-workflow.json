@@ -15,8 +15,8 @@
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2.1,
         "position": [
-          0,
-          96
+          -176,
+          448
         ]
       },
       {
@@ -32,8 +32,8 @@
         "type": "n8n-nodes-base.respondToWebhook",
         "typeVersion": 1.5,
         "position": [
-          224,
-          -96
+          208,
+          112
         ]
       },
       {
@@ -52,10 +52,11 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          224,
-          192
+          240,
+          480
         ],
-        "onError": "continueRegularOutput"
+        "onError": "continueErrorOutput",
+        "alwaysOutputData": true
       },
       {
         "parameters": {
@@ -94,8 +95,8 @@
         "type": "n8n-nodes-base.set",
         "typeVersion": 3.5,
         "position": [
-          448,
-          192
+          464,
+          480
         ]
       },
       {
@@ -121,8 +122,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          672,
-          192
+          688,
+          480
         ],
         "onError": "continueRegularOutput"
       },
@@ -145,7 +146,7 @@
           448,
           848
         ],
-        "onError": "continueRegularOutput"
+        "onError": "continueErrorOutput"
       },
       {
         "parameters": {
@@ -221,8 +222,8 @@
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2.1,
         "position": [
-          -16,
-          1440
+          -160,
+          1152
         ]
       },
       {
@@ -282,8 +283,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          80,
-          2416
+          64,
+          1472
         ]
       },
       {
@@ -309,8 +310,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          304,
-          2416
+          288,
+          1472
         ],
         "onError": "continueRegularOutput"
       },
@@ -327,8 +328,8 @@
         "type": "@n8n/n8n-nodes-langchain.agent",
         "typeVersion": 3.1,
         "position": [
-          528,
-          2416
+          512,
+          1472
         ]
       },
       {
@@ -341,8 +342,8 @@
         "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
         "typeVersion": 1.4,
         "position": [
-          672,
-          2640
+          656,
+          1696
         ]
       },
       {
@@ -361,8 +362,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          880,
-          2416
+          864,
+          1472
         ],
         "onError": "continueRegularOutput"
       },
@@ -389,14 +390,14 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          1104,
-          2416
+          1088,
+          1472
         ],
         "onError": "continueRegularOutput"
       },
       {
         "parameters": {
-          "content": "## Branch 1 - Launch from the CRM\nThe CRM posts {campaign_id, location, lead_count} here, n8n answers 200 instantly, scrapes leads (Apify), saves them to the CRM, emails them (Smartlead) and sends a WhatsApp intro 2 hours later.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "content": "## Branch 1 - Launch from the CRM\nThe CRM posts {campaign_id, location, lead_count} here, n8n answers 200 instantly, scrapes leads (Apify), saves them to the CRM, emails them (Smartlead) and sends a WhatsApp intro 2 hours later.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 3
         },
         "id": "42393fff-e2af-454a-a276-e94d42ea263e",
@@ -410,7 +411,7 @@
       },
       {
         "parameters": {
-          "content": "## Staged outreach\nEmail -> wait 2h -> WhatsApp intro. Every step reports back to the CRM (X-Leadgen-Token). A failed intro is logged but the prospect is NOT marked messaged.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "content": "## Staged outreach\nEmail -> wait 2h -> WhatsApp intro. Every step reports back to the CRM (X-Leadgen-Token). A failed intro is logged but the prospect is NOT marked messaged.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 4
         },
         "id": "1d45c33e-497a-48f3-b525-dd01b649aadf",
@@ -424,7 +425,7 @@
       },
       {
         "parameters": {
-          "content": "## Inbound WhatsApp agent\nOnly prospects the CRM already knows get an AI reply (Gemini + memory). Strangers are ignored. Every message and any delivery failure is logged to the CRM.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "content": "## Inbound WhatsApp agent\nOnly prospects the CRM already knows get an AI reply (ChatGPT + memory). Strangers are ignored. Every message and any delivery failure is logged to the CRM.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 6
         },
         "id": "7a56f946-6a6d-495c-9599-571f2934d511",
@@ -438,19 +439,21 @@
       },
       {
         "parameters": {
-          "modelName": "models/gemini-2.5-flash",
-          "options": {
-            "maxOutputTokens": 300,
-            "temperature": 0.5
-          }
+          "model": {
+            "__rl": true,
+            "mode": "list",
+            "value": "gpt-4o-mini"
+          },
+          "options": {},
+          "builtInTools": {}
         },
         "id": "537189bb-386d-43b6-8b76-ab8c88593039",
         "name": "Chat Model",
-        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
-        "typeVersion": 1.1,
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
         "position": [
-          544,
-          2640
+          528,
+          1696
         ]
       },
       {
@@ -483,8 +486,8 @@
         "type": "n8n-nodes-base.if",
         "typeVersion": 2.3,
         "position": [
-          992,
-          2544
+          976,
+          1600
         ]
       },
       {
@@ -510,8 +513,8 @@
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
         "position": [
-          1216,
-          2640
+          1200,
+          1696
         ],
         "onError": "continueRegularOutput"
       },
@@ -837,6 +840,92 @@
           400,
           560
         ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"campaign_failed\", campaign_id: $(\"Voice Command Webhook\").first().json.body.campaign_id, data: { reason: ($json.error?.message ?? $json.message ?? JSON.stringify($json)).toString().slice(0, 200) } } }}"
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          400,
+          -60
+        ],
+        "id": "report-lead-search-failure",
+        "name": "Report Lead Search Failure",
+        "executeOnce": true,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"campaign_scraped\", campaign_id: $(\"Voice Command Webhook\").first().json.body.campaign_id, data: { count: $(\"Apify Scrape Leads\").all().filter(i => i.json && Object.keys(i.json).length && !i.json.error).length } } }}"
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          400,
+          260
+        ],
+        "id": "report-lead-search-result",
+        "name": "Report Lead Search Result",
+        "executeOnce": true,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"send_failed\", lead_id: $(\"Split Leads\").item.json.id, phone: $(\"Split Leads\").item.json.phone, data: { channel: \"Cold email\", reason: ($json.error?.message ?? $json.message ?? JSON.stringify($json)).toString().slice(0, 200) } } }}"
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1500,
+          260
+        ],
+        "id": "log-email-failure",
+        "name": "Log Email Failure",
+        "onError": "continueRegularOutput"
       }
     ],
     "connections": {
@@ -900,7 +989,19 @@
         "main": [
           [
             {
+              "node": "Report Lead Search Result",
+              "type": "main",
+              "index": 0
+            },
+            {
               "node": "Normalize Lead",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Report Lead Search Failure",
               "type": "main",
               "index": 0
             }
@@ -974,6 +1075,24 @@
           [
             {
               "node": "Mark EMAIL_SENT",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Email Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Email Failure": {
+        "main": [
+          [
+            {
+              "node": "Wait 2 Hours",
               "type": "main",
               "index": 0
             }
@@ -1152,6 +1271,6 @@
     "settings": {
       "executionOrder": "v1"
     },
-    "description": "Launched from the CRM: scrape sellers, save them in the CRM, email via Smartlead, WhatsApp intro after 2h, Gemini auto-replies to known prospects. Reports every step back to the CRM."
+    "description": "Launched from the CRM: scrape sellers, save them in the CRM, email via Smartlead, WhatsApp intro after 2h, ChatGPT auto-replies to known prospects. Reports every step back to the CRM."
   }
 ]

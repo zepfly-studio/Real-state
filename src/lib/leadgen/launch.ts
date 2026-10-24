@@ -1,13 +1,14 @@
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { parseBrief } from "./intent";
+import { parseBrief, type Brief } from "./intent";
 import { fireN8n } from "./n8n";
 import { logEvent } from "./db";
 
 /** Create a campaign from a spoken/typed brief and start the n8n workflow. Shared by the Launch box and the assistant. */
-export async function launchCampaign(tenantId: string, userId: string, transcriptRaw: string) {
+export async function launchCampaign(tenantId: string, userId: string, transcriptRaw: string, approved?: Brief) {
   const transcript = transcriptRaw.trim().slice(0, 600);
-  const brief = await parseBrief(tenantId, transcript);
+  // `approved` = what the person confirmed on screen after reviewing the AI's reading of the brief.
+  const brief = approved ?? (await parseBrief(tenantId, transcript));
   const name = brief.location
     ? `${brief.location} Campaign`
     : `Campaign ${new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`;

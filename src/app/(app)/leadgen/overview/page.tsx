@@ -25,12 +25,14 @@ export default async function LeadgenOverview() {
     listLeads(tenantId, { limit: 500 }),
     getIntegration(tenantId, "SMARTLEAD"),
     getIntegration(tenantId, "EVOLUTION_KEY"),
-    getIntegration(tenantId, "GEMINI"),
+    getIntegration(tenantId, "OPENAI"),
     getIntegration(tenantId, "N8N_WEBHOOK"),
   ]);
   const ready = leads.filter((l) => l.status === "HOT_LEAD").slice(0, 6);
   const connected = [smart, wa, gem, n8n].filter(Boolean).length;
   const automationDown = events.some((e) => e.type === "n8n_dispatch_failed");
+  const lastSearch = events.find((e) => e.type.startsWith("lead_search_"));
+  const searchFailed = lastSearch?.type === "lead_search_failed" ? lastSearch : null;
 
   const funnel = [
     { label: "Prospects found", value: m.leads, color: "var(--txt-faint)", hint: "Found and saved" },
@@ -54,7 +56,7 @@ export default async function LeadgenOverview() {
           <div className="grid place-items-center w-9 h-9 rounded-lg bg-gold-soft text-gold-bright"><Icon name="PlugZap" size={17} /></div>
           <div className="text-sm flex-1">
             <span className="font-semibold">Finish setup — {connected} of 4 tools connected.</span>{" "}
-            <span className="text-txt-dim">Smartlead (email), WhatsApp, Gemini (assistant) and n8n (automation) each need a key, once.</span>
+            <span className="text-txt-dim">Smartlead (email), WhatsApp, ChatGPT (assistant) and n8n (automation) each need a key, once.</span>
           </div>
           <Link href="/leadgen/setup" className="text-sm font-semibold text-gold-bright whitespace-nowrap">Open Setup →</Link>
         </div>
@@ -63,6 +65,13 @@ export default async function LeadgenOverview() {
         <div className="card p-4 flex items-center gap-3 mb-5 border-red/40">
           <span className="text-red"><Icon name="TriangleAlert" size={18} /></span>
           <div className="text-sm"><span className="font-semibold">Automation isn&apos;t running.</span> <span className="text-txt-dim">The last campaign couldn&apos;t reach n8n. Publish the workflow in n8n, then launch again.</span></div>
+        </div>
+      )}
+
+      {searchFailed && (
+        <div className="card p-4 flex items-center gap-3 mb-5 border-red/40" role="alert">
+          <span className="text-red"><Icon name="SearchX" size={18} /></span>
+          <div className="text-sm min-w-0"><span className="font-semibold">The last campaign couldn&apos;t find sellers.</span> <span className="text-txt-dim break-words">{searchFailed.detail.replace(/^Lead search failed: /, "")} — check the Apify actor ID and token in n8n.</span></div>
         </div>
       )}
 
@@ -137,7 +146,7 @@ export default async function LeadgenOverview() {
             <ul className="space-y-3 max-h-[340px] overflow-y-auto pr-1">
               {events.map((e) => (
                 <li key={e.id} className="flex gap-3">
-                  <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${e.type.includes("failed") ? "bg-red" : e.type === "status_change" ? "bg-purple" : e.type === "lead_scraped" ? "bg-blue" : "bg-gold"}`} />
+                  <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${e.type.includes("failed") || e.type === "lead_search_empty" ? "bg-red" : e.type === "status_change" ? "bg-purple" : e.type === "lead_scraped" ? "bg-blue" : "bg-gold"}`} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className="text-sm font-semibold">{EVENT_LABEL[e.type] ?? e.type}</span>
@@ -172,7 +181,7 @@ export default async function LeadgenOverview() {
                       <td className="py-2.5 pr-4"><div className="font-semibold">{c.name}</div><div className="text-xs text-txt-dim">{c.location || "—"}</div></td>
                       <td className="py-2.5 pr-4 tabular-nums">{c.leads}{c.target ? <span className="text-txt-faint"> / {c.target}</span> : null}</td>
                       <td className="py-2.5 pr-4 tabular-nums">{c.interested}</td>
-                      <td className="py-2.5 pr-4"><span className={`tag ${c.status === "ACTIVE" ? "bg-[rgba(62,199,141,.14)] text-green" : c.status === "PENDING" ? "bg-gold-soft text-gold-bright" : "bg-panel-2 text-txt-dim"}`}>{c.status === "PENDING" ? "Not started" : c.status === "SCRAPING" ? "Finding leads" : c.status === "ACTIVE" ? "Running" : "Completed"}</span></td>
+                      <td className="py-2.5 pr-4"><span className={`tag ${c.status === "ACTIVE" ? "bg-[rgba(62,199,141,.14)] text-green" : c.status === "FAILED" ? "bg-[rgba(240,85,106,.14)] text-red" : c.status === "PENDING" ? "bg-gold-soft text-gold-bright" : "bg-panel-2 text-txt-dim"}`}>{c.status === "PENDING" ? "Not started" : c.status === "SCRAPING" ? "Finding leads" : c.status === "ACTIVE" ? "Running" : c.status === "FAILED" ? "Failed" : "Completed"}</span></td>
                       <td className="py-2.5 text-txt-dim whitespace-nowrap">{timeAgo(c.createdAt)}</td>
                     </tr>
                   ))}
