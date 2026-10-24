@@ -8,7 +8,7 @@ import type { SearchPlan } from "./plan";
  */
 export async function fireN8n(
   tenantId: string,
-  payload: { campaign_id: string; transcript: string; location: string; lead_count: number; plan: SearchPlan }
+  payload: { campaign_id: string; transcript: string; location: string; lead_count: number; plan: SearchPlan; apify_input: Record<string, unknown> }
 ): Promise<{ ok: boolean; detail: string; configured: boolean }> {
   const url = (await getIntegration(tenantId, "N8N_WEBHOOK")) || process.env.N8N_WEBHOOK_URL || "";
   if (!url) {

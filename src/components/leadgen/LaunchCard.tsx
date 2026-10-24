@@ -10,6 +10,7 @@ interface Plan {
   include_titles: string[];
   exclude_titles: string[];
   seniority: string[];
+  industries: string[];
   location: string;
   lead_count: number;
   notes: string;
@@ -207,7 +208,14 @@ export function LaunchCard({ automationReady }: { automationReady: boolean }) {
             <Chips label="Decision makers (job titles)" tone="green" items={plan.include_titles} onChange={(v) => setPlan({ ...plan, include_titles: v })} placeholder="add title…" />
             <Chips label="Prioritise seniority" tone="green" items={plan.seniority} onChange={(v) => setPlan({ ...plan, seniority: v })} placeholder="add level…" />
             <Chips label="Exclude (never import)" tone="red" items={plan.exclude_titles} onChange={(v) => setPlan({ ...plan, exclude_titles: v })} placeholder="add title to exclude…" />
+            <Chips label="Industries (LinkedIn names, e.g. Medical Practice)" tone="gold" items={plan.industries} onChange={(v) => setPlan({ ...plan, industries: v })} placeholder="add industry…" />
           </div>
+          {plan.lead_count > 0 && (
+            <p className="mt-3 text-xs text-txt-dim">
+              <Icon name="Coins" size={12} className="inline -mt-0.5" /> Apify will check about <b>{Math.min(2000, Math.max(100, plan.lead_count * 5))}</b> profiles
+              (≈ ${(Math.min(2000, Math.max(100, plan.lead_count * 5)) * 0.0021).toFixed(2)}) and the CRM keeps the best {plan.lead_count} that match.
+            </p>
+          )}
           {plan.notes && <p className="mt-3 text-xs text-txt-dim"><Icon name="Info" size={12} className="inline -mt-0.5" /> {plan.notes}</p>}
           <p className="mt-3 text-xs text-txt-dim">
             On launch n8n searches with this plan, and the CRM drops anyone matching an excluded title and ranks owners, founders and directors first.

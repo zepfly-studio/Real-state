@@ -3,7 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { lgTokenTenant } from "@/lib/leadgen/guard";
 import { findLead, logEvent, logMessage } from "@/lib/leadgen/db";
 import { LG_STAGES, phoneKey } from "@/lib/leadgen/stages";
-import { normalizePlan, scoreLead } from "@/lib/leadgen/plan";
+import { cityMatches, isRelevant, normalizePlan, scoreLead } from "@/lib/leadgen/plan";
 
 /**
  * POST /api/leadgen/sync — the n8n workflow reports what it did.
@@ -37,12 +37,20 @@ export async function POST(req: Request) {
 
       // Apply the approved search plan to every result: excluded titles (assistants, students…) are dropped,
       // decision makers get a higher priority score.
-      const campaign = campaignId ? await prisma.lgCampaign.findFirst({ where: { id: campaignId, tenantId }, select: { plan: true } }) : null;
+      const campaign = campaignId ? await prisma.lgCampaign.findFirst({ where: { id: campaignId, tenantId }, select: { plan: true, leadTarget: true } }) : null;
       const plan = campaign?.plan ? normalizePlan(campaign.plan as any) : null;
       const score = scoreLead(plan, str(d.title, 200));
-      if (score === null) {
+      // The scraper filters by state; keep only the requested city when the result says where it is.
+      const relevant = isRelevant(plan, str(d.relevance, 2000));
+      if (score === null || !cityMatches(plan, str(d.city, 120)) || !relevant) {
         if (campaignId) await prisma.lgCampaign.update({ where: { id: campaignId }, data: { filtered: { increment: 1 } } });
-        return NextResponse.json({ ok: true, filtered: true, reason: "title excluded by the search plan" });
+        return NextResponse.json({ ok: true, filtered: true, reason: score === null ? "title excluded by the search plan" : !relevant ? "not the kind of business asked for" : "outside the requested city" });
+      }
+
+      // Deliver the number asked for: stop once the campaign has that many prospects (the scraper over-fetches).
+      if (campaignId && campaign?.leadTarget) {
+        const have = await prisma.lgLead.count({ where: { tenantId, campaignId } });
+        if (have >= campaign.leadTarget) return NextResponse.json({ ok: true, skipped: true, reason: "campaign already has the requested number of prospects" });
       }
 
       // Same person inside one campaign = same prospect: match on phone (any formatting), else on email.
@@ -100,7 +108,7 @@ export async function POST(req: Request) {
       const lead = await findLead(tenantId, { id: body.lead_id, phone: phoneIn });
       const channel = String(d.channel ?? "message");
       const reason = String(d.reason ?? "delivery failed").slice(0, 200);
-      await logEvent(tenantId, "send_failed", `${channel} to ${phoneIn || "unknown"} not delivered: ${reason}`, { campaignId: lead?.campaignId, leadId: lead?.id });
+      await logEvent(tenantId, "send_failed", `${channel} to ${phoneIn || String(d.email ?? "") || "unknown"} not delivered: ${reason}`, { campaignId: lead?.campaignId, leadId: lead?.id });
       return NextResponse.json({ ok: true, linked_lead: Boolean(lead) });
     }
 

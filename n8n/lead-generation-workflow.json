@@ -39,13 +39,15 @@
       {
         "parameters": {
           "method": "POST",
-          "url": "https://api.apify.com/v2/acts/YOUR_APIFY_ACTOR_ID/run-sync-get-dataset-items",
+          "url": "https://api.apify.com/v2/acts/olympus~b2b-leads-finder/run-sync-get-dataset-items?timeout=300",
           "authentication": "genericCredentialType",
           "genericAuthType": "httpTemplatedCustomAuth",
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { \"searchQueries\": $json.body.plan?.keywords ?? [$json.body.transcript], \"jobTitles\": $json.body.plan?.include_titles ?? [], \"excludeJobTitles\": $json.body.plan?.exclude_titles ?? [], \"seniority\": $json.body.plan?.seniority ?? [], \"location\": $json.body.plan?.location ?? $json.body.location, \"maxItems\": $json.body.plan?.lead_count ?? $json.body.lead_count } }}",
-          "options": {}
+          "jsonBody": "={{ $json.body.apify_input }}",
+          "options": {
+            "timeout": 330000
+          }
         },
         "id": "8e8f3a23-5aeb-4c72-adb7-212d52be8de7",
         "name": "Apify Scrape Leads",
@@ -65,55 +67,61 @@
               {
                 "id": "n1",
                 "name": "name",
-                "value": "={{ $json.fullName ?? $json.ownerName ?? $json.name ?? $json.contactName ?? $json.title_name ?? null }}",
+                "value": "={{ [$json.firstName, $json.lastName].filter(Boolean).join(' ').trim() || $json.fullName || $json.name || null }}",
                 "type": "string"
               },
               {
                 "id": "n2",
                 "name": "email",
-                "value": "={{ $json.email ?? $json.contactEmail ?? $json.workEmail ?? $json.personalEmail ?? null }}",
+                "value": "={{ $json.email ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n3",
                 "name": "phone",
-                "value": "={{ $json.mobile ?? $json.phone ?? $json.phoneNumber ?? $json.contactPhone ?? $json.mobileNumber ?? null }}",
+                "value": "={{ $json.phone ?? $json.mobile ?? $json.organizationPhone ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n4",
                 "name": "address",
-                "value": "={{ $json.address ?? $json.fullAddress ?? $json.street ?? null }}",
+                "value": "={{ [$json.organizationAddress1, $json.organizationCity].filter(Boolean).join(', ') || null }}",
                 "type": "string"
               },
               {
                 "id": "n5",
                 "name": "title",
-                "value": "={{ $json.jobTitle ?? $json.title ?? $json.position ?? $json.headline ?? $json.occupation ?? null }}",
+                "value": "={{ $json.title ?? $json.jobTitle ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n6",
                 "name": "company",
-                "value": "={{ $json.companyName ?? $json.company ?? $json.organizationName ?? $json.organization_name ?? null }}",
+                "value": "={{ $json.organizationName ?? $json.companyName ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n7",
                 "name": "linkedin",
-                "value": "={{ $json.linkedinUrl ?? $json.linkedin ?? $json.profileUrl ?? $json.linkedInProfileUrl ?? null }}",
+                "value": "={{ $json.linkedinUrl ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n8",
                 "name": "website",
-                "value": "={{ $json.website ?? $json.companyWebsite ?? $json.url ?? null }}",
+                "value": "={{ $json.organizationWebsite ?? $json.website ?? null }}",
                 "type": "string"
               },
               {
                 "id": "n9",
                 "name": "city",
-                "value": "={{ $json.city ?? $json.location ?? $json.locationName ?? null }}",
+                "value": "={{ $json.city ?? $json.organizationCity ?? null }}",
+                "type": "string"
+              },
+              {
+                "id": "n10",
+                "name": "relevance",
+                "value": "={{ [$json.organizationName, $json.organizationIndustry, ($json.organizationKeywords || []).join(' '), String($json.organizationDescription || '').slice(0, 400), $json.title].filter(Boolean).join(' ') }}",
                 "type": "string"
               }
             ]
@@ -144,7 +152,7 @@
           },
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { \"event\": \"new_lead\", \"campaign_id\": $(\"Voice Command Webhook\").item.json.body.campaign_id, \"data\": { \"name\": $json.name, \"phone\": $json.phone, \"email\": $json.email, \"address\": $json.address, \"title\": $json.title, \"company\": $json.company, \"linkedin\": $json.linkedin, \"website\": $json.website, \"city\": $json.city } } }}",
+          "jsonBody": "={{ { \"event\": \"new_lead\", \"campaign_id\": $(\"Voice Command Webhook\").item.json.body.campaign_id, \"data\": { \"name\": $json.name, \"phone\": $json.phone, \"email\": $json.email, \"address\": $json.address, \"title\": $json.title, \"company\": $json.company, \"linkedin\": $json.linkedin, \"website\": $json.website, \"city\": $json.city, \"relevance\": $json.relevance } } }}",
           "options": {}
         },
         "id": "d895b5a4-4369-4e0a-87f3-d28bef32725f",
@@ -427,7 +435,7 @@
       },
       {
         "parameters": {
-          "content": "## Branch 1 - Launch from the CRM\nThe CRM posts {campaign_id, location, lead_count} here, n8n answers 200 instantly, scrapes leads (Apify), saves them to the CRM, emails them (Smartlead) and sends a WhatsApp intro 2 hours later.\n\nApify: put your actor ID in the URL. The CRM sends a search plan (keywords, job titles, exclusions, seniority, location, count); rename the keys in the Apify body if your actor uses other input names. The CRM re-filters every result.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
+          "content": "## Branch 1 - Launch from the CRM\nThe CRM posts {campaign_id, location, lead_count} here, n8n answers 200 instantly, scrapes leads (Apify), saves them to the CRM, emails them (Smartlead) and sends a WhatsApp intro 2 hours later.\n\nApify: olympus/b2b-leads-finder (credential 'Apify API'). The CRM sends the plan already converted to this actor's input; the CRM re-filters every result by title, city and relevance.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 3
         },
         "id": "42393fff-e2af-454a-a276-e94d42ea263e",
@@ -441,7 +449,7 @@
       },
       {
         "parameters": {
-          "content": "## Staged outreach\nEmail -> wait 2h -> WhatsApp intro. Every step reports back to the CRM (X-Leadgen-Token). A failed intro is logged but the prospect is NOT marked messaged.\n\nApify: put your actor ID in the URL. The CRM sends a search plan (keywords, job titles, exclusions, seniority, location, count); rename the keys in the Apify body if your actor uses other input names. The CRM re-filters every result.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
+          "content": "## Staged outreach\nEmail -> wait 2h -> WhatsApp intro. Every step reports back to the CRM (X-Leadgen-Token). A failed intro is logged but the prospect is NOT marked messaged.\n\nApify: olympus/b2b-leads-finder (credential 'Apify API'). The CRM sends the plan already converted to this actor's input; the CRM re-filters every result by title, city and relevance.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 4
         },
         "id": "1d45c33e-497a-48f3-b525-dd01b649aadf",
@@ -455,7 +463,7 @@
       },
       {
         "parameters": {
-          "content": "## Inbound WhatsApp agent\nOnly prospects the CRM already knows get an AI reply (ChatGPT + memory). Strangers are ignored. Every message and any delivery failure is logged to the CRM.\n\nApify: put your actor ID in the URL. The CRM sends a search plan (keywords, job titles, exclusions, seniority, location, count); rename the keys in the Apify body if your actor uses other input names. The CRM re-filters every result.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
+          "content": "## Inbound WhatsApp agent\nOnly prospects the CRM already knows get an AI reply (ChatGPT + memory). Strangers are ignored. Every message and any delivery failure is logged to the CRM.\n\nApify: olympus/b2b-leads-finder (credential 'Apify API'). The CRM sends the plan already converted to this actor's input; the CRM re-filters every result by title, city and relevance.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the ChatGPT model (OpenAI).",
           "color": 6
         },
         "id": "7a56f946-6a6d-495c-9599-571f2934d511",
@@ -761,6 +769,40 @@
       },
       {
         "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "p1",
+                "leftValue": "={{ $(\"Split Leads\").item.json.phone }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "has-phone",
+        "name": "Has Phone?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1900,
+          100
+        ]
+      },
+      {
+        "parameters": {
           "method": "POST",
           "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
           "sendHeaders": true,
@@ -916,7 +958,7 @@
           "options": {},
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { event: \"campaign_scraped\", campaign_id: $(\"Voice Command Webhook\").first().json.body.campaign_id, data: { count: $(\"Apify Scrape Leads\").all().filter(i => i.json && Object.keys(i.json).length && !i.json.error).length } } }}"
+          "jsonBody": "={{ { event: \"campaign_scraped\", campaign_id: $(\"Voice Command Webhook\").first().json.body.campaign_id, data: { count: $(\"Apify Scrape Leads\").all().filter(i => i.json && (i.json.email || i.json.phone || i.json.linkedinUrl)).length } } }}"
         },
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
@@ -945,7 +987,7 @@
           "options": {},
           "sendBody": true,
           "specifyBody": "json",
-          "jsonBody": "={{ { event: \"send_failed\", lead_id: $(\"Split Leads\").item.json.id, phone: $(\"Split Leads\").item.json.phone, data: { channel: \"Cold email\", reason: ($json.error?.message ?? $json.message ?? JSON.stringify($json)).toString().slice(0, 200) } } }}"
+          "jsonBody": "={{ { event: \"send_failed\", lead_id: $(\"Split Leads\").item.json.id, phone: $(\"Split Leads\").item.json.phone, data: { channel: \"Cold email\", email: $(\"Split Leads\").item.json.email, reason: ($json.error?.message ?? $json.message ?? JSON.stringify($json)).toString().slice(0, 200) } } }}"
         },
         "type": "n8n-nodes-base.httpRequest",
         "typeVersion": 4.5,
@@ -1141,6 +1183,17 @@
         ]
       },
       "Wait 2 Hours": {
+        "main": [
+          [
+            {
+              "node": "Has Phone?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Phone?": {
         "main": [
           [
             {

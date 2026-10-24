@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
 import { buildPlan, normalizePlan, type SearchPlan } from "./plan";
 import { fireN8n } from "./n8n";
+import { toActorInput } from "./apify";
 import { logEvent } from "./db";
 
 export function campaignName(plan: SearchPlan): string {
@@ -24,7 +25,8 @@ export async function launchCampaign(tenantId: string, userId: string, transcrip
   await logEvent(tenantId, "campaign_launched", `${name} / ${plan.lead_count} leads — ${plan.keywords.slice(0, 4).join(", ")}`, { campaignId: campaign.id });
   await audit({ tenantId, action: "LEADGEN_CAMPAIGN_LAUNCHED", entity: "LgCampaign", entityId: campaign.id, performedById: userId, meta: { ...plan } });
 
-  const n8n = await fireN8n(tenantId, { campaign_id: campaign.id, transcript, location: plan.location, lead_count: plan.lead_count, plan });
+  // apify_input = the plan already converted to the scraper's input format; n8n forwards it as-is.
+  const n8n = await fireN8n(tenantId, { campaign_id: campaign.id, transcript, location: plan.location, lead_count: plan.lead_count, plan, apify_input: toActorInput(plan) });
   await logEvent(tenantId, n8n.ok ? "n8n_dispatch" : "n8n_dispatch_failed", n8n.detail, { campaignId: campaign.id });
   if (!n8n.ok) await prisma.lgCampaign.update({ where: { id: campaign.id }, data: { status: "PENDING" } });
 
