@@ -645,3 +645,67 @@ model PriceTrend {
 
   @@index([tenantId, area])
 }
+
+// ─────────────────────────── Lead Generation add-on ───────────────────────────
+// Additive module (Smartlead email + WhatsApp + n8n + Gemini assistant).
+// Self-contained: no foreign keys into, or changes to, any CRM table. Every row is
+// scoped by tenantId in code. A lead-gen lead can be copied into the CRM `Lead`
+// table on request (crmLeadId records the link).
+
+model LgCampaign {
+  id             String   @id @default(cuid())
+  tenantId       String
+  name           String
+  targetLocation String?
+  leadTarget     Int      @default(0)
+  status         String   @default("PENDING") // PENDING | SCRAPING | ACTIVE | COMPLETED
+  transcript     String?
+  createdAt      DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}
+
+model LgLead {
+  id          String   @id @default(cuid())
+  tenantId    String
+  campaignId  String?
+  name        String?
+  phone       String
+  email       String?
+  address     String?
+  status      String   @default("SCRAPED") // SCRAPED | EMAIL_SENT | WHATSAPP_SENT | HOT_LEAD | UNQUALIFIED
+  askingPrice Decimal? @db.Decimal(14, 2)
+  timeline    String?
+  crmLeadId   String? // set once copied into the CRM Lead table
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, phone])
+}
+
+model LgMessage {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String?
+  phone     String
+  direction String // INBOUND | OUTBOUND
+  text      String
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, phone])
+  @@index([tenantId, createdAt])
+}
+
+model LgEvent {
+  id         String   @id @default(cuid())
+  tenantId   String
+  campaignId String?
+  leadId     String?
+  type       String
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, createdAt])
+}

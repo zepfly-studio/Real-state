@@ -638,7 +638,7 @@ function PermissionMatrixTab({
           acc[g] = modules.filter((m) => m.group === g);
           return acc;
         },
-        { WORKSPACE: [], "HEAVY TOOLS & AI": [], ADMIN: [] }
+        { WORKSPACE: [], "LEAD GENERATION": [], "HEAVY TOOLS & AI": [], ADMIN: [] }
       ),
     [modules]
   );

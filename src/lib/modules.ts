@@ -1,6 +1,6 @@
 import { Role } from "@prisma/client";
 
-export type ModuleGroup = "WORKSPACE" | "HEAVY TOOLS & AI" | "ADMIN";
+export type ModuleGroup = "WORKSPACE" | "LEAD GENERATION" | "HEAVY TOOLS & AI" | "ADMIN";
 
 export interface ModuleDef {
   key: string;
@@ -36,6 +36,14 @@ export const MODULES: ModuleDef[] = [
   { key: "ceo", label: "CEO Space", href: "/ceo", icon: "Crown", group: "WORKSPACE", roles: OWNER },
   { key: "partners", label: "Channel Partners", href: "/partners", icon: "Handshake", group: "WORKSPACE", roles: [...MGMT, "CHANNEL_PARTNER"] },
 
+  // ── LEAD GENERATION (add-on: voice-launched campaigns, Smartlead email, WhatsApp, Gemini assistant) ──
+  { key: "leadgen", label: "Lead Gen Overview", href: "/leadgen/overview", icon: "Rocket", group: "LEAD GENERATION", roles: STAFF },
+  { key: "leadgen-leads", label: "Prospects", href: "/leadgen/leads", icon: "UserSearch", group: "LEAD GENERATION", roles: STAFF },
+  { key: "leadgen-inbox", label: "Reply Inbox", href: "/leadgen/inbox", icon: "MessagesSquare", group: "LEAD GENERATION", roles: STAFF },
+  { key: "leadgen-email", label: "Email Campaigns", href: "/leadgen/email", icon: "MailPlus", group: "LEAD GENERATION", roles: STAFF },
+  { key: "leadgen-mailboxes", label: "Mailboxes", href: "/leadgen/mailboxes", icon: "Inbox", group: "LEAD GENERATION", roles: MGMT },
+  { key: "leadgen-setup", label: "Setup & Connect", href: "/leadgen/setup", icon: "PlugZap", group: "LEAD GENERATION", roles: OWNER },
+
   // ── HEAVY TOOLS & AI ──
   { key: "ai", label: "AI Assistant", href: "/tools/ai", icon: "Sparkles", group: "HEAVY TOOLS & AI", roles: STAFF },
   { key: "lead-genius", label: "Lead Genius", href: "/tools/lead-genius", icon: "Target", group: "HEAVY TOOLS & AI", roles: STAFF },
@@ -62,7 +70,7 @@ export const MODULES: ModuleDef[] = [
   { key: "super-admin", label: "Super Admin", href: "/super-admin", icon: "ServerCog", group: "ADMIN", roles: ["SUPER_ADMIN"] },
 ];
 
-export const MODULE_GROUPS: ModuleGroup[] = ["WORKSPACE", "HEAVY TOOLS & AI", "ADMIN"];
+export const MODULE_GROUPS: ModuleGroup[] = ["WORKSPACE", "LEAD GENERATION", "HEAVY TOOLS & AI", "ADMIN"];
 
 export function moduleByKey(key: string): ModuleDef | undefined {
   return MODULES.find((m) => m.key === key);

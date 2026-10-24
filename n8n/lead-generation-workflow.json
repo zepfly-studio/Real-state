@@ -1,0 +1,1157 @@
+[
+  {
+    "name": "Lead Generation → CRM",
+    "active": false,
+    "nodes": [
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "voice-command-launch",
+          "responseMode": "responseNode",
+          "options": {}
+        },
+        "id": "5bdb870a-204a-4e9c-8479-0d1fa259741f",
+        "name": "Voice Command Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          0,
+          96
+        ]
+      },
+      {
+        "parameters": {
+          "respondWith": "json",
+          "responseBody": "={{ { \"status\": \"success\", \"message\": \"Campaign received. Scraping started.\" } }}",
+          "options": {
+            "responseCode": 200
+          }
+        },
+        "id": "1efc16df-8b52-4884-83bf-ec3f277191f5",
+        "name": "Respond 200 Immediately",
+        "type": "n8n-nodes-base.respondToWebhook",
+        "typeVersion": 1.5,
+        "position": [
+          224,
+          -96
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.apify.com/v2/acts/YOUR_APIFY_ACTOR_ID/run-sync-get-dataset-items",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpTemplatedCustomAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"location\": $json.body.location, \"maxItems\": $json.body.lead_count } }}",
+          "options": {}
+        },
+        "id": "8e8f3a23-5aeb-4c72-adb7-212d52be8de7",
+        "name": "Apify Scrape Leads",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          224,
+          192
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "n1",
+                "name": "name",
+                "value": "={{ $json.ownerName ?? $json.name ?? $json.contactName }}",
+                "type": "string"
+              },
+              {
+                "id": "n2",
+                "name": "email",
+                "value": "={{ $json.email ?? $json.contactEmail }}",
+                "type": "string"
+              },
+              {
+                "id": "n3",
+                "name": "phone",
+                "value": "={{ $json.phone ?? $json.phoneNumber ?? $json.contactPhone }}",
+                "type": "string"
+              },
+              {
+                "id": "n4",
+                "name": "address",
+                "value": "={{ $json.address ?? $json.fullAddress ?? $json.location }}",
+                "type": "string"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "id": "68eb98e9-13e0-4199-bd5e-83f868a1ae90",
+        "name": "Normalize Lead",
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          448,
+          192
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"event\": \"new_lead\", \"campaign_id\": $(\"Voice Command Webhook\").item.json.body.campaign_id, \"data\": { \"name\": $json.name, \"phone\": $json.phone, \"email\": $json.email, \"address\": $json.address } } }}",
+          "options": {}
+        },
+        "id": "d895b5a4-4369-4e0a-87f3-d28bef32725f",
+        "name": "Store Lead (API)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          672,
+          192
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "https://server.smartlead.ai/api/v1/campaigns/YOUR_CAMPAIGN_ID/leads",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpTemplatedCustomAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"lead_list\": [ { \"email\": $json.email, \"first_name\": $json.name, \"custom_fields\": { \"property_address\": $json.address } } ] } }}",
+          "options": {}
+        },
+        "id": "c23796fb-e815-40b2-a153-800aa784e6ff",
+        "name": "Smartlead Cold Email",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          448,
+          848
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "amount": 2,
+          "unit": "hours"
+        },
+        "id": "51662b66-a97f-4655-8212-f71db64ac5cc",
+        "name": "Wait 2 Hours",
+        "type": "n8n-nodes-base.wait",
+        "typeVersion": 1.1,
+        "position": [
+          896,
+          848
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.evolution_url + \"/message/sendText/\" + $(\"CRM Settings\").first().json.evolution_instance }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { number: String($(\"Split Leads\").item.json.phone).replace(/\\D/g, \"\"), text: \"Hi \" + ($(\"Split Leads\").item.json.name || \"there\") + \", I reached out about your property\" + ($(\"Split Leads\").item.json.address ? \" at \" + $(\"Split Leads\").item.json.address : \"\") + \". Are you open to a quick offer?\" } }}",
+          "options": {}
+        },
+        "id": "cc081f98-b453-4108-a22f-02bce5bc5a93",
+        "name": "WhatsApp Intro Message",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1120,
+          848
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"whatsapp_message\", lead_id: $(\"Split Leads\").item.json.id, phone: $(\"Split Leads\").item.json.phone, data: { direction: \"OUTBOUND\", text: \"Hi \" + ($(\"Split Leads\").item.json.name || \"there\") + \", I reached out about your property\" + ($(\"Split Leads\").item.json.address ? \" at \" + $(\"Split Leads\").item.json.address : \"\") + \". Are you open to a quick offer?\" } } }}",
+          "options": {}
+        },
+        "id": "be4febfe-a32c-4068-8f2b-5f9ae0228ef2",
+        "name": "Log Outbound Ping",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1344,
+          848
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "cloudstation-whatsapp-inbound",
+          "options": {}
+        },
+        "id": "fbcfc0e5-c764-4a30-9cfc-6b507229b951",
+        "name": "WhatsApp Inbound Webhook",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2.1,
+        "position": [
+          -16,
+          1440
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "t1",
+                "leftValue": "={{ $json.body.data?.message?.conversation ?? $json.body.data?.message?.extendedTextMessage?.text }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              },
+              {
+                "id": "t2",
+                "leftValue": "={{ $json.body.data?.key?.fromMe }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "notEquals"
+                }
+              },
+              {
+                "id": "t3",
+                "leftValue": "={{ $json.body.data?.key?.remoteJid ?? '' }}",
+                "rightValue": "@g.us",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEndsWith"
+                }
+              },
+              {
+                "id": "t4",
+                "leftValue": "={{ $json.body.data?.key?.remoteJid ?? '' }}",
+                "rightValue": "@broadcast",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEndsWith"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "4c5d06a7-b8b9-42bc-8de0-7e6a01109c71",
+        "name": "Is User Text Message",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          80,
+          2416
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"event\": \"whatsapp_message\", \"lead_id\": $(\"Find Lead by Phone\").item.json.lead.id, \"phone\": ($(\"WhatsApp Inbound Webhook\").item.json.body.data.key.remoteJid || \"\").split(\"@\")[0], \"data\": { \"direction\": \"INBOUND\", \"text\": $(\"WhatsApp Inbound Webhook\").item.json.body.data.message.conversation ?? $(\"WhatsApp Inbound Webhook\").item.json.body.data.message.extendedTextMessage.text } } }}",
+          "options": {}
+        },
+        "id": "912fadd4-fa6d-499d-a76f-02f815cfc25e",
+        "name": "Log Inbound Message",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          304,
+          2416
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $(\"WhatsApp Inbound Webhook\").item.json.body.data.message.conversation ?? $(\"WhatsApp Inbound Webhook\").item.json.body.data.message.extendedTextMessage.text }}",
+          "options": {
+            "systemMessage": "You are an assistant for a real estate acquisitions team. Answer the seller's questions naturally, qualify their asking price and timeline, and keep replies under 2 sentences."
+          }
+        },
+        "id": "af76c9fd-4e78-414b-ba24-0cb364a25332",
+        "name": "Real Estate Assistant",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          528,
+          2416
+        ]
+      },
+      {
+        "parameters": {
+          "sessionIdType": "customKey",
+          "sessionKey": "={{ $('WhatsApp Inbound Webhook').item.json.body.data.key.remoteJid }}"
+        },
+        "id": "669975a8-737c-4863-b9dc-2bd7170144e4",
+        "name": "Conversation Memory",
+        "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+        "typeVersion": 1.4,
+        "position": [
+          672,
+          2640
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.evolution_url + \"/message/sendText/\" + $(\"CRM Settings\").first().json.evolution_instance }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpHeaderAuth",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"number\": ($(\"WhatsApp Inbound Webhook\").item.json.body.data.key.remoteJid || \"\").split(\"@\")[0], \"text\": $json.output } }}",
+          "options": {}
+        },
+        "id": "e60e36fe-e52b-49f7-b283-16bce5db2436",
+        "name": "WhatsApp Send Reply",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          880,
+          2416
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"event\": \"whatsapp_message\", \"phone\": ($(\"WhatsApp Inbound Webhook\").item.json.body.data.key.remoteJid || \"\").split(\"@\")[0], \"data\": { \"direction\": \"OUTBOUND\", \"text\": $(\"Real Estate Assistant\").item.json.output } } }}",
+          "options": {}
+        },
+        "id": "a7b85a3a-7485-42df-af69-c7f488b7e579",
+        "name": "Log Outbound Reply",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1104,
+          2416
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "content": "## Branch 1 - Launch from the CRM\nThe CRM posts {campaign_id, location, lead_count} here, n8n answers 200 instantly, scrapes leads (Apify), saves them to the CRM, emails them (Smartlead) and sends a WhatsApp intro 2 hours later.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "color": 3
+        },
+        "id": "42393fff-e2af-454a-a276-e94d42ea263e",
+        "name": "Sticky Note 4eb62f41",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1392,
+          1648
+        ]
+      },
+      {
+        "parameters": {
+          "content": "## Staged outreach\nEmail -> wait 2h -> WhatsApp intro. Every step reports back to the CRM (X-Leadgen-Token). A failed intro is logged but the prospect is NOT marked messaged.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "color": 4
+        },
+        "id": "1d45c33e-497a-48f3-b525-dd01b649aadf",
+        "name": "Sticky Note 4574dbb7",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1392,
+          1904
+        ]
+      },
+      {
+        "parameters": {
+          "content": "## Inbound WhatsApp agent\nOnly prospects the CRM already knows get an AI reply (Gemini + memory). Strangers are ignored. Every message and any delivery failure is logged to the CRM.\n\nFill in ONLY the **CRM Settings** node, then attach credentials to: Apify, Smartlead, both WhatsApp nodes and the Gemini model.",
+          "color": 6
+        },
+        "id": "7a56f946-6a6d-495c-9599-571f2934d511",
+        "name": "Sticky Note 42230d83",
+        "type": "n8n-nodes-base.stickyNote",
+        "typeVersion": 1,
+        "position": [
+          1392,
+          2416
+        ]
+      },
+      {
+        "parameters": {
+          "modelName": "models/gemini-2.5-flash",
+          "options": {
+            "maxOutputTokens": 300,
+            "temperature": 0.5
+          }
+        },
+        "id": "537189bb-386d-43b6-8b76-ab8c88593039",
+        "name": "Chat Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+        "typeVersion": 1.1,
+        "position": [
+          544,
+          2640
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "d1",
+                "leftValue": "={{ $json.key?.id }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "6eca83c0-d8c6-4604-961e-574c16390eca",
+        "name": "Reply Delivered?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          992,
+          2544
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"event\": \"send_failed\", \"phone\": ($(\"WhatsApp Inbound Webhook\").item.json.body.data.key.remoteJid || \"\").split(\"@\")[0], \"data\": { \"channel\": \"WhatsApp reply\", \"reason\": JSON.stringify($json).slice(0, 180) } } }}",
+          "options": {}
+        },
+        "id": "c94c1e9d-971a-4954-ae77-59042a8abfca",
+        "name": "Log Reply Failure",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1216,
+          2640
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "i1",
+                "leftValue": "={{ $json.key?.id }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "be063258-9f96-4e7a-a4c2-694fccd9fa4a",
+        "name": "Intro Delivered?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1232,
+          1088
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { \"event\": \"send_failed\", \"lead_id\": $(\"Split Leads\").item.json.id, \"phone\": $(\"Split Leads\").item.json.phone, \"data\": { \"channel\": \"WhatsApp intro\", \"reason\": JSON.stringify($json).slice(0, 180) } } }}",
+          "options": {}
+        },
+        "id": "0561cc3d-9a05-4055-99d7-55b9284518f2",
+        "name": "Log Intro Failure",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1456,
+          1040
+        ],
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "assignments": {
+            "assignments": [
+              {
+                "id": "c1",
+                "name": "crm_url",
+                "value": "YOUR_CRM_URL",
+                "type": "string"
+              },
+              {
+                "id": "c2",
+                "name": "token",
+                "value": "YOUR_LEADGEN_TOKEN",
+                "type": "string"
+              },
+              {
+                "id": "c3",
+                "name": "evolution_url",
+                "value": "YOUR_EVOLUTION_URL",
+                "type": "string"
+              },
+              {
+                "id": "c4",
+                "name": "evolution_instance",
+                "value": "YOUR_EVOLUTION_INSTANCE",
+                "type": "string"
+              }
+            ]
+          },
+          "includeOtherFields": true,
+          "options": {}
+        },
+        "type": "n8n-nodes-base.set",
+        "typeVersion": 3.5,
+        "position": [
+          -200,
+          300
+        ],
+        "id": "crm-settings",
+        "name": "CRM Settings"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "w1",
+                "leftValue": "={{ $json.body.campaign_id }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "exists",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "is-campaign-launch",
+        "name": "Is Campaign Launch?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          -20,
+          300
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/n8n/leads?status=SCRAPED&limit=50&campaign_id=\" + encodeURIComponent($(\"Voice Command Webhook\").first().json.body.campaign_id) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          900,
+          100
+        ],
+        "id": "get-leads-to-contact",
+        "name": "Get Leads to Contact",
+        "executeOnce": true
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "leads",
+          "options": {}
+        },
+        "type": "n8n-nodes-base.splitOut",
+        "typeVersion": 1,
+        "position": [
+          1100,
+          100
+        ],
+        "id": "split-leads",
+        "name": "Split Leads"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "e1",
+                "leftValue": "={{ $json.email }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEmpty",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "has-email",
+        "name": "Has Email?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          1300,
+          100
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"status_change\", lead_id: $(\"Split Leads\").item.json.id, data: { status: \"EMAIL_SENT\" } } }}"
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          1500,
+          100
+        ],
+        "id": "mark-email_sent",
+        "name": "Mark EMAIL_SENT"
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/sync\" }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {},
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ { event: \"status_change\", lead_id: $(\"Split Leads\").item.json.id, data: { status: \"WHATSAPP_SENT\" } } }}"
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          2200,
+          40
+        ],
+        "id": "mark-whatsapp_sent",
+        "name": "Mark WHATSAPP_SENT"
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "={{ $(\"CRM Settings\").first().json.crm_url + \"/api/leadgen/n8n/leads?phone=\" + encodeURIComponent(($(\"WhatsApp Inbound Webhook\").item.json.body.data.key.remoteJid || \"\").split(\"@\")[0]) }}",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "X-Leadgen-Token",
+                "value": "={{ $(\"CRM Settings\").first().json.token }}"
+              }
+            ]
+          },
+          "options": {}
+        },
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.5,
+        "position": [
+          200,
+          560
+        ],
+        "id": "find-lead-by-phone",
+        "name": "Find Lead by Phone"
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": true,
+              "leftValue": "",
+              "typeValidation": "loose",
+              "version": 2
+            },
+            "conditions": [
+              {
+                "id": "k1",
+                "leftValue": "={{ $json.found }}",
+                "rightValue": true,
+                "operator": {
+                  "type": "boolean",
+                  "operation": "true",
+                  "singleValue": true
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "known-lead",
+        "name": "Known Lead?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2.3,
+        "position": [
+          400,
+          560
+        ]
+      }
+    ],
+    "connections": {
+      "Voice Command Webhook": {
+        "main": [
+          [
+            {
+              "node": "Respond 200 Immediately",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "CRM Settings",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WhatsApp Inbound Webhook": {
+        "main": [
+          [
+            {
+              "node": "CRM Settings",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "CRM Settings": {
+        "main": [
+          [
+            {
+              "node": "Is Campaign Launch?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is Campaign Launch?": {
+        "main": [
+          [
+            {
+              "node": "Apify Scrape Leads",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Is User Text Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Apify Scrape Leads": {
+        "main": [
+          [
+            {
+              "node": "Normalize Lead",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Normalize Lead": {
+        "main": [
+          [
+            {
+              "node": "Store Lead (API)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Store Lead (API)": {
+        "main": [
+          [
+            {
+              "node": "Get Leads to Contact",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Leads to Contact": {
+        "main": [
+          [
+            {
+              "node": "Split Leads",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Leads": {
+        "main": [
+          [
+            {
+              "node": "Has Email?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Email?": {
+        "main": [
+          [
+            {
+              "node": "Smartlead Cold Email",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Wait 2 Hours",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Smartlead Cold Email": {
+        "main": [
+          [
+            {
+              "node": "Mark EMAIL_SENT",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark EMAIL_SENT": {
+        "main": [
+          [
+            {
+              "node": "Wait 2 Hours",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Wait 2 Hours": {
+        "main": [
+          [
+            {
+              "node": "WhatsApp Intro Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WhatsApp Intro Message": {
+        "main": [
+          [
+            {
+              "node": "Intro Delivered?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Intro Delivered?": {
+        "main": [
+          [
+            {
+              "node": "Log Outbound Ping",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Intro Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Outbound Ping": {
+        "main": [
+          [
+            {
+              "node": "Mark WHATSAPP_SENT",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Is User Text Message": {
+        "main": [
+          [
+            {
+              "node": "Find Lead by Phone",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Find Lead by Phone": {
+        "main": [
+          [
+            {
+              "node": "Known Lead?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Known Lead?": {
+        "main": [
+          [
+            {
+              "node": "Log Inbound Message",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Log Inbound Message": {
+        "main": [
+          [
+            {
+              "node": "Real Estate Assistant",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Real Estate Assistant": {
+        "main": [
+          [
+            {
+              "node": "WhatsApp Send Reply",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "WhatsApp Send Reply": {
+        "main": [
+          [
+            {
+              "node": "Reply Delivered?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Reply Delivered?": {
+        "main": [
+          [
+            {
+              "node": "Log Outbound Reply",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Log Reply Failure",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Chat Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "Real Estate Assistant",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Conversation Memory": {
+        "ai_memory": [
+          [
+            {
+              "node": "Real Estate Assistant",
+              "type": "ai_memory",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "settings": {
+      "executionOrder": "v1"
+    },
+    "description": "Launched from the CRM: scrape sellers, save them in the CRM, email via Smartlead, WhatsApp intro after 2h, Gemini auto-replies to known prospects. Reports every step back to the CRM."
+  }
+]
