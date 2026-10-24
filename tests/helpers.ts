@@ -14,7 +14,8 @@ export async function login(page: Page, email: string) {
   await page.fill('input[type="email"]', email);
   await page.fill('input[type="password"]', "password123");
   await page.click('button:has-text("Sign in")');
-  await page.waitForURL(/\/dashboard/, { timeout: 20_000 });
+  // Staff land on Lead Generation (the home screen); clients and partners land on /dashboard.
+  await page.waitForURL(/\/(dashboard|leadgen\/overview)/, { timeout: 20_000 });
 }
 
 /** Collect page console errors for assertions. */

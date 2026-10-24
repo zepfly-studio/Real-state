@@ -8,7 +8,7 @@ import { ApiError, Avatar, lg, Spinner, useToast } from "./kit";
 export interface ReadyLead {
   id: string;
   name: string | null;
-  phone: string;
+  phone: string | null;
   address: string | null;
   askingPrice: number | null;
   timeline: string | null;
@@ -25,7 +25,7 @@ export function ReadyList({ leads }: { leads: ReadyLead[] }) {
     setBusy(l.id);
     try {
       const r = await lg<{ created: boolean }>(`/leads/${l.id}/crm`, { method: "POST", body: {} });
-      toast.success(r.created ? "Added to the CRM" : "Linked to the existing CRM lead", l.name || l.phone);
+      toast.success(r.created ? "Added to the CRM" : "Linked to the existing CRM lead", l.name || l.phone || "");
       router.refresh();
     } catch (e) {
       toast.error("Couldn't add to the CRM", e instanceof ApiError ? e.message : undefined);
@@ -34,15 +34,15 @@ export function ReadyList({ leads }: { leads: ReadyLead[] }) {
     }
   }
 
-  if (!leads.length) return <EmptyState icon="Star" title="No interested sellers yet" hint="Mark a prospect Interested after they reply, and they appear here." />;
+  if (!leads.length) return <EmptyState icon="Star" title="No interested prospects yet" hint="Mark a prospect Interested after they reply, and they appear here." />;
   return (
     <ul className="divide-y divide-line-soft">
       {leads.map((l) => (
         <li key={l.id} className="flex items-center gap-3 py-3">
           <Avatar name={l.name} />
           <div className="min-w-0 flex-1">
-            <div className="text-sm font-semibold truncate">{l.name || l.phone}</div>
-            <div className="text-xs text-txt-dim truncate">{l.address || l.phone}{l.timeline ? ` · ${l.timeline}` : ""}</div>
+            <div className="text-sm font-semibold truncate">{l.name || l.phone || "Unknown"}</div>
+            <div className="text-xs text-txt-dim truncate">{l.address || l.phone || ""}{l.timeline ? ` · ${l.timeline}` : ""}</div>
           </div>
           {l.crmLeadId ? (
             <a href="/crm" className="tag bg-[rgba(62,199,141,.14)] text-green inline-flex items-center gap-1"><Icon name="Check" size={12} /> In CRM</a>

@@ -88,12 +88,14 @@ Add a key → the matching tool flips from built-in to live automatically (resol
 
 ---
 
-## 🎯 Lead Generation add-on
+## 🎯 Lead Generation add-on + voice assistant
 
-A **LEAD GENERATION** sidebar group: voice/text campaign launch → sellers found by n8n → Smartlead email →
-WhatsApp → ChatGPT auto-replies → one-click **Add to CRM**. Includes a unified reply inbox, Smartlead campaign
-management with full analytics, mailbox health, and a ChatGPT voice assistant (**Shift + D**) that drafts
-replies and acts only after you confirm. Additive only — no existing CRM table or page changes.
+A **LEAD GENERATION** sidebar group (first; staff land on it after login): say who you need ("Noida mein 50 dentists
+chahiye") → the AI builds a search plan (keywords, decision-maker titles, exclusions, seniority) → n8n finds people →
+the CRM keeps only decision makers → Smartlead email → WhatsApp → ChatGPT auto-replies → one-click **Add to CRM**.
+Plus a **ChatGPT voice assistant on every CRM page (Shift + D)** that handles CRM work (follow-ups, stages, notes,
+assignment, new leads, inventory, bookings) and lead generation — always asking before it changes or sends anything,
+built for low API cost. No existing CRM table changes.
 
 Setup, credentials and the n8n workflow: **[docs/LEAD_GENERATION.md](docs/LEAD_GENERATION.md)**.
 

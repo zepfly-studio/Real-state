@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { lgTokenTenant } from "@/lib/leadgen/guard";
 import { findLead, logEvent, logMessage } from "@/lib/leadgen/db";
 import { LG_STAGES, phoneKey } from "@/lib/leadgen/stages";
+import { normalizePlan, scoreLead } from "@/lib/leadgen/plan";
 
 /**
  * POST /api/leadgen/sync — the n8n workflow reports what it did.
@@ -30,26 +31,48 @@ export async function POST(req: Request) {
 
   try {
     if (kind === "new_lead") {
-      if (!phoneIn) return NextResponse.json({ error: "new_lead requires data.phone" }, { status: 400 });
-      // Same person, different formatting (+91…, 0…, spaces) inside one campaign is the same prospect.
+      const str = (v: unknown, n: number) => (v == null || String(v).trim() === "" ? undefined : String(v).trim().slice(0, n));
+      const email = str(d.email, 200)?.toLowerCase();
+      if (!phoneIn && !email) return NextResponse.json({ error: "new_lead requires data.phone or data.email" }, { status: 400 });
+
+      // Apply the approved search plan to every result: excluded titles (assistants, students…) are dropped,
+      // decision makers get a higher priority score.
+      const campaign = campaignId ? await prisma.lgCampaign.findFirst({ where: { id: campaignId, tenantId }, select: { plan: true } }) : null;
+      const plan = campaign?.plan ? normalizePlan(campaign.plan as any) : null;
+      const score = scoreLead(plan, str(d.title, 200));
+      if (score === null) {
+        if (campaignId) await prisma.lgCampaign.update({ where: { id: campaignId }, data: { filtered: { increment: 1 } } });
+        return NextResponse.json({ ok: true, filtered: true, reason: "title excluded by the search plan" });
+      }
+
+      // Same person inside one campaign = same prospect: match on phone (any formatting), else on email.
       const key = phoneKey(phoneIn);
-      const same = key.length >= 7
-        ? await prisma.lgLead.findMany({ where: { tenantId, campaignId, phone: { contains: key } }, take: 10 })
-        : await prisma.lgLead.findMany({ where: { tenantId, campaignId, phone: phoneIn }, take: 1 });
-      const existing = same.find((r) => phoneKey(r.phone) === key) ?? same[0] ?? null;
+      let existing = null;
+      if (key.length >= 7) {
+        const same = await prisma.lgLead.findMany({ where: { tenantId, campaignId, phone: { contains: key } }, take: 10 });
+        existing = same.find((r) => phoneKey(r.phone) === key) ?? null;
+      }
+      if (!existing && email) existing = await prisma.lgLead.findFirst({ where: { tenantId, campaignId, email } });
+
       const fields = {
-        name: d.name ? String(d.name).slice(0, 200) : undefined,
-        email: d.email ? String(d.email).slice(0, 200) : undefined,
-        address: d.address ? String(d.address).slice(0, 500) : undefined,
+        name: str(d.name, 200),
+        email,
+        address: str(d.address, 500),
+        title: str(d.title, 200),
+        company: str(d.company, 200),
+        website: str(d.website, 300),
+        linkedin: str(d.linkedin, 300),
+        city: str(d.city, 120),
+        score,
       };
       const lead = existing
-        ? await prisma.lgLead.update({ where: { id: existing.id }, data: fields })
-        : await prisma.lgLead.create({ data: { tenantId, campaignId, phone: phoneIn.slice(0, 50), ...fields } });
+        ? await prisma.lgLead.update({ where: { id: existing.id }, data: { ...fields, ...(phoneIn && !existing.phone ? { phone: phoneIn.slice(0, 50) } : {}) } })
+        : await prisma.lgLead.create({ data: { tenantId, campaignId, phone: phoneIn ? phoneIn.slice(0, 50) : null, ...fields } });
       if (!existing) {
-        await logEvent(tenantId, "lead_scraped", String(d.name || phoneIn), { campaignId, leadId: lead.id });
+        await logEvent(tenantId, "lead_scraped", [fields.name || phoneIn || email, fields.title, fields.company].filter(Boolean).join(" · "), { campaignId, leadId: lead.id });
         if (campaignId) await prisma.lgCampaign.updateMany({ where: { id: campaignId, tenantId, status: { in: ["PENDING", "SCRAPING"] } }, data: { status: "ACTIVE" } });
       }
-      return NextResponse.json({ ok: true, lead_id: lead.id });
+      return NextResponse.json({ ok: true, lead_id: lead.id, score });
     }
 
     if (kind === "status_change") {
@@ -90,7 +113,7 @@ export async function POST(req: Request) {
       if (c?.status === "FAILED") return NextResponse.json({ ok: true, ignored: "campaign already failed" });
       await prisma.lgCampaign.update({ where: { id: campaignId }, data: { status: count > 0 ? "ACTIVE" : "COMPLETED" } });
       await logEvent(tenantId, count > 0 ? "lead_search_done" : "lead_search_empty",
-        count > 0 ? `${c?.name}: found ${count} seller${count === 1 ? "" : "s"}` : `${c?.name}: no sellers found${c?.targetLocation ? ` in ${c.targetLocation}` : ""}`, { campaignId });
+        count > 0 ? `${c?.name}: search returned ${count} result${count === 1 ? "" : "s"} (filtering by the plan)` : `${c?.name}: no results${c?.targetLocation ? ` in ${c.targetLocation}` : ""}`, { campaignId });
       return NextResponse.json({ ok: true, count });
     }
 

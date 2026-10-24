@@ -62,3 +62,15 @@ export async function requireModule(key: string): Promise<LgCtx> {
   if (!tenantId || !(await canViewModule(user.role, tenantId, key))) redirect("/dashboard");
   return { user, tenantId: tenantId as string };
 }
+
+const STAFF: Role[] = ["SUPER_ADMIN", "ADMIN", "MANAGER", "EMPLOYEE"];
+
+/** The CRM-wide assistant: any staff member of a workspace (tools are then limited by their module permissions). */
+export async function assistantContext(): Promise<LgCtx | NextResponse> {
+  const user = await currentUser();
+  if (!user) return NextResponse.json({ error: "Please sign in." }, { status: 401 });
+  const tenantId = await resolveTenantId(user);
+  if (!tenantId) return NextResponse.json({ error: "No workspace found for this account." }, { status: 400 });
+  if (!STAFF.includes(user.role)) return NextResponse.json({ error: "The assistant is available to staff accounts." }, { status: 403 });
+  return { user, tenantId };
+}

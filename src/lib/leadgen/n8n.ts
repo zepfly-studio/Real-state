@@ -1,4 +1,5 @@
 import { getIntegration } from "@/lib/integrations";
+import type { SearchPlan } from "./plan";
 
 /**
  * Start the n8n scrape-and-outreach workflow for a campaign.
@@ -7,7 +8,7 @@ import { getIntegration } from "@/lib/integrations";
  */
 export async function fireN8n(
   tenantId: string,
-  payload: { campaign_id: string; transcript: string; location: string; lead_count: number }
+  payload: { campaign_id: string; transcript: string; location: string; lead_count: number; plan: SearchPlan }
 ): Promise<{ ok: boolean; detail: string; configured: boolean }> {
   const url = (await getIntegration(tenantId, "N8N_WEBHOOK")) || process.env.N8N_WEBHOOK_URL || "";
   if (!url) {

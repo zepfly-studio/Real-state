@@ -1,38 +1,63 @@
-# Lead Generation add-on
+# Lead Generation add-on + CRM-wide voice assistant
 
-A self-contained module inside Real Estate OS: launch a campaign by voice or text, find sellers,
-email them through **Smartlead**, WhatsApp them through **Evolution / CloudStation**, let a **ChatGPT**
-assistant answer, and move the interested ones into the CRM with one click.
+A self-contained module inside Real Estate OS. Say who you need (*"Noida mein 50 dentists chahiye"*), the AI turns
+it into a proper **search plan**, n8n finds the people, the CRM keeps only decision makers, emails them through
+**Smartlead**, WhatsApps them through **Evolution / CloudStation**, a **ChatGPT** agent answers replies, and the
+interested ones move into the CRM with one click. A **ChatGPT voice assistant** (Shift + D) runs CRM and
+lead-generation work from any page.
 
-It is **additive**: it adds new pages, API routes and four new tables. It does not change any
-existing CRM table, page or API. (The only edits to existing files are registry entries: the sidebar
-group in `src/lib/modules.ts`, integration names in `src/lib/integrations.ts`, the new models at the
-end of `prisma/schema.prisma`, and one line in the Team page that lists sidebar groups.)
+It is **additive**: new pages, API routes and four new `Lg*` tables. No existing CRM table changes. Edits to existing
+files: the sidebar group + its order (`src/lib/modules.ts`), integration names (`src/lib/integrations.ts`), new models at
+the end of `prisma/schema.prisma`, the Team page's group list (one line), the login redirect (staff land on Lead
+Generation), mounting the assistant in `src/app/(app)/layout.tsx`, and the test helpers that wait for the landing page.
 
 ---
 
 ## What you get
 
-Sidebar group **LEAD GENERATION**:
+Sidebar group **LEAD GENERATION** (first in the sidebar; staff land on its Overview after login):
 
 | Page | Path | Who sees it | What it does |
 |---|---|---|---|
-| Lead Gen Overview | `/leadgen/overview` | staff | Launch box (speak or type → AI shows what it understood → you approve → launch), KPIs, Email + WhatsApp channel cards, funnel, activity, campaigns, "Ready to talk to" with **Add to CRM** |
-| Prospects | `/leadgen/leads` | staff | Filter by stage, search, CSV export, detail drawer (journey, WhatsApp chat, **Interested / Not interested**, **Add to CRM**) |
-| Reply Inbox | `/leadgen/inbox` | staff | WhatsApp + email replies in one list, reply on either channel, "Needs a reply" filter |
-| Email Campaigns | `/leadgen/email` | staff | Smartlead campaigns with all metrics (leads, sent, opened, clicked, replied, positive, bounced), create / start / pause / stop, add leads (paste CSV), edit the email sequence |
-| Mailboxes | `/leadgen/mailboxes` | managers | Sending accounts, warm-up, reputation, daily capacity, connection errors |
-| Setup & Connect | `/leadgen/setup` | admins | Paste each key once, **Save & test**, and copy the values n8n needs |
+| Lead Gen Overview | `/leadgen/overview` | staff | Launch box (speak or type → AI search plan → edit → launch), KPIs, Email + WhatsApp cards, funnel, activity, campaigns (with *filtered out* counts), "Ready to talk to" with **Add to CRM** |
+| Prospects | `/leadgen/leads` | staff | Title, company, contact, **priority** (decision makers first), stage filters, search, CSV, detail drawer (Interested / Not interested, Add to CRM, WhatsApp thread) |
+| Reply Inbox | `/leadgen/inbox` | staff | WhatsApp + email replies in one list, reply on either channel |
+| Email Campaigns | `/leadgen/email` | staff | Smartlead campaigns with all metrics, create / start / pause / stop, add leads, edit sequences |
+| Mailboxes | `/leadgen/mailboxes` | managers | Sending accounts, warm-up, reputation, capacity |
+| Setup & Connect | `/leadgen/setup` | admins | Paste each key once, **Save & test**, copy the values n8n needs |
 
-**ChatGPT voice assistant** on every Lead Generation page: press **Shift + D** (or the *Ask assistant*
-button) and talk or type — *"How many leads do I have?"*, *"Reply to the follow-ups"*, *"Launch a
-campaign for 30 sellers in Mansarovar"*, *"Add Dana to the CRM"*. It reads freely but **never sends or
-changes anything without a confirmation** ("yes" or the Confirm button). Voice needs Chrome or Edge;
-typing works everywhere.
+### AI search plan (no raw pass-through)
 
-Roles follow the existing permission matrix (Team & Roles → the new modules appear there and in
-White-Label, and can be switched off per role or per tenant). Clients and channel partners never see it.
-Every query is scoped by `tenantId`.
+*"Noida mein 50 dentists chahiye"* becomes:
+
+- **Keywords:** dentist, dental clinic, orthodontist, dental surgeon, endodontist, implantologist…
+- **Decision makers:** owner, founder, chief dental surgeon, clinic director, partner…
+- **Prioritise seniority:** owner, founder, director, partner…
+- **Exclude (never import):** assistant, intern, student, trainee, receptionist, fresher…
+- **Location:** Noida, Uttar Pradesh, India · **How many:** 50
+
+Everything is editable before launch. n8n receives the plan, and the CRM applies it again to every result: excluded
+titles are dropped (counted as *filtered out*), decision makers get a high priority score. Without a ChatGPT key a
+built-in reader still builds a plan (professions dictionary + default decision-maker filters, English and Hinglish).
+
+### CRM-wide voice assistant (ChatGPT)
+
+On every CRM page for staff: **Shift + D** (or *Ask assistant*). Speak or type in English / Hindi / Hinglish:
+
+- CRM: *"Aaj ke follow-ups kya hain?"*, *"Rahul ko site visit pe move karo, kal 11 baje follow-up, Rohit ko assign karo"*,
+  *"Add lead Priya 9811…, 3BHK Mansarovar, hot"*, *"How many units are available?"*, *"Recent bookings"*
+- Lead generation: *"Noida mein 50 dentists chahiye"* (plans the campaign), *"Reply to the follow-ups"*, *"Add Dana to the CRM"*
+- Navigation: *"Open prospects"*, *"CRM kholo"*
+
+Reads happen at once; anything that creates, changes or sends something shows a confirm card first (say "yes" or
+press Confirm), and is re-validated on the server. Each person only gets tools their role can access (permission
+matrix). Voice needs Chrome or Edge; typing works everywhere.
+
+**Low API cost by design:** `gpt-4o-mini`; plain navigation commands are handled without calling the model; the
+system prompt and tool list are fixed per role so OpenAI's prompt caching bills repeats at the cached rate (date and
+page go in the user turn); short tool descriptions; results trimmed to ~2.5k characters; replies capped at 300 tokens;
+at most 4 model↔tool rounds and the last 8 turns per request; pure navigation skips the second model call; the plan
+is one JSON-mode call capped at 400 tokens. Every response reports its model calls and tokens (`cost`).
 
 ---
 
@@ -65,7 +90,7 @@ Then press **Create token** on the Setup page. That workspace token is what n8n 
 
    | Node(s) | Credential type | Value |
    |---|---|---|
-   | Apify Scrape Leads | Custom Auth / Bearer | your Apify token (and replace `YOUR_APIFY_ACTOR_ID` in the URL) |
+   | Apify Scrape Leads | Custom Auth / Bearer | your Apify token; replace `YOUR_APIFY_ACTOR_ID` in the URL. The body sends the plan as `searchQueries`, `jobTitles`, `excludeJobTitles`, `seniority`, `location`, `maxItems` — rename the keys if your actor uses other input names |
    | Smartlead Cold Email | Custom Auth (templated) | `{"qs":{"api_key":"{{api_key}}"}}` with your Smartlead key (and replace `YOUR_CAMPAIGN_ID`) |
    | WhatsApp Intro Message, WhatsApp Send Reply | Header Auth | header `apikey` = your Evolution key |
    | Chat Model | OpenAI | your OpenAI key (model `gpt-4o-mini`) |
@@ -90,8 +115,8 @@ n8n ⇄ CRM endpoints (header `X-Leadgen-Token`):
 
 ## Data
 
-Four new tables (migration `20261024000000_leadgen_addon`, `CREATE TABLE` / `CREATE INDEX` only):
-`LgCampaign`, `LgLead`, `LgMessage`, `LgEvent`. No foreign keys into CRM tables.
+Four new tables (migrations `20261024000000_leadgen_addon` and `20261025000000_leadgen_plan` — they only create or alter the `Lg*` tables):
+`LgCampaign` (incl. the approved plan and filtered count), `LgLead` (incl. title, company, website, LinkedIn, city, priority score; phone optional), `LgMessage`, `LgEvent`. No foreign keys into CRM tables.
 **Add to CRM** only ever inserts one row into the CRM `Lead` table (source `WHATSAPP`, temperature
 `HOT` for interested prospects) — or links the existing CRM lead with the same phone number.
 It never edits or deletes CRM records.

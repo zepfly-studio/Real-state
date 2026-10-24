@@ -3,7 +3,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import { Icon } from "@/components/Icon";
-import { AssistantLauncher, AssistantPanel, AssistantProvider } from "./assistant";
 import { ToastProvider } from "./kit";
 
 export interface Tab {
@@ -13,13 +12,12 @@ export interface Tab {
   icon: string;
 }
 
-/** Wraps every Lead Generation page: sub-navigation, toasts and the ChatGPT assistant. */
+/** Wraps every Lead Generation page: sub-navigation and toasts. (The assistant is mounted CRM-wide.) */
 export function Shell({ tabs, children }: { tabs: Tab[]; children: ReactNode }) {
   const pathname = usePathname();
   const active = (href: string) => pathname === href || pathname.startsWith(href + "/");
   return (
     <ToastProvider>
-      <AssistantProvider>
         <nav aria-label="Lead Generation sections" className="mb-6 -mt-1 flex gap-1 overflow-x-auto border-b border-line">
           {tabs.map((t) => (
             <Link
@@ -37,9 +35,6 @@ export function Shell({ tabs, children }: { tabs: Tab[]; children: ReactNode }) 
           ))}
         </nav>
         {children}
-        <AssistantPanel />
-        <AssistantLauncher />
-      </AssistantProvider>
     </ToastProvider>
   );
 }

@@ -34,6 +34,8 @@ export async function copyToCrm(
   if (!crmId) {
     const notes = [
       "Added from Lead Generation" + (campaign ? ` — campaign “${campaign.name}”` : "") + ".",
+      [lg.title, lg.company].filter(Boolean).length ? `${[lg.title, lg.company].filter(Boolean).join(" at ")}.` : "",
+      lg.linkedin ? `LinkedIn: ${lg.linkedin}` : "",
       lg.timeline ? `Timeline to sell: ${lg.timeline}.` : "",
       chats ? `${chats} WhatsApp message${chats === 1 ? "" : "s"} exchanged.` : "",
     ]
@@ -42,11 +44,11 @@ export async function copyToCrm(
     const created = await prisma.lead.create({
       data: {
         tenantId,
-        name: (lg.name || lg.phone).slice(0, 200),
-        phone: lg.phone,
+        name: (lg.name || lg.phone || lg.email || "Unknown").slice(0, 200),
+        phone: lg.phone ?? "",
         email: lg.email,
         propertyType: "Not specified",
-        location: (lg.address || campaign?.targetLocation || "Not specified").slice(0, 300),
+        location: (lg.address || lg.city || campaign?.targetLocation || "Not specified").slice(0, 300),
         source: LeadSource.WHATSAPP,
         temperature: lg.status === "HOT_LEAD" ? LeadTemperature.HOT : LeadTemperature.WARM,
         value: new Prisma.Decimal(lg.askingPrice ? String(lg.askingPrice) : "0"),

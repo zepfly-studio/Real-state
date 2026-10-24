@@ -9,6 +9,12 @@ test.describe("Lead Generation (admin, no keys)", () => {
     await login(page, USERS.admin);
   });
 
+  test("staff land on Lead Generation after login, and it is the first sidebar group", async ({ page }) => {
+    await expect(page).toHaveURL(/\/leadgen\/overview/);
+    const groups = await page.locator("aside nav .section-label").allInnerTexts();
+    expect(groups[0]).toMatch(/LEAD GENERATION/i);
+  });
+
   test("sidebar shows the LEAD GENERATION group next to the CRM", async ({ page }) => {
     const nav = page.locator("aside nav");
     await expect(nav.getByText("LEAD GENERATION")).toBeVisible();
@@ -37,8 +43,8 @@ test.describe("Lead Generation (admin, no keys)", () => {
     await expect(page.getByText(/Connect Smartlead/i).first()).toBeVisible();
   });
 
-  test("assistant opens with Shift+D and asks for a ChatGPT key", async ({ page }) => {
-    await page.goto("/leadgen/overview");
+  test("assistant is available on CRM pages too (Shift+D) and asks for a ChatGPT key", async ({ page }) => {
+    await page.goto("/crm");
     await page.locator("body").click({ position: { x: 5, y: 5 } });
     await page.keyboard.press("Shift+D");
     const panel = page.getByRole("dialog", { name: "Voice assistant" });
@@ -50,15 +56,17 @@ test.describe("Lead Generation (admin, no keys)", () => {
 
   test("launching without n8n saves the campaign and says why it didn't start", async ({ page }) => {
     await page.goto("/leadgen/overview");
-    await page.getByLabel("Campaign brief").fill("find 25 sellers in Mansarovar");
-    await page.getByRole("button", { name: /Review/ }).click();
-    // The AI's reading is shown for approval before anything is launched.
+    await page.getByLabel("Campaign brief").fill("Noida mein 25 dentists chahiye");
+    await page.getByRole("button", { name: /Build plan/ }).click();
+    // The search plan is shown for approval before anything is launched.
     const confirm = page.getByRole("group", { name: "Confirm campaign" });
-    await expect(confirm.getByLabel("Area")).toHaveValue("Mansarovar");
+    await expect(confirm.getByLabel("Area")).toHaveValue(/Noida/);
     await expect(confirm.getByLabel("Sellers to find")).toHaveValue("25");
+    await expect(confirm.getByText("dental clinic")).toBeVisible();
+    await expect(confirm.getByText("intern", { exact: true })).toBeVisible();
     await confirm.getByRole("button", { name: /Launch campaign/ }).click();
     await expect(page.getByText(/automation isn't running/i).first()).toBeVisible();
-    await expect(page.getByText("Mansarovar Campaign").first()).toBeVisible();
+    await expect(page.getByText(/Dentists — Noida/).first()).toBeVisible();
   });
 });
 

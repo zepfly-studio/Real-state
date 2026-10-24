@@ -3,7 +3,25 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, u
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
-import { ApiError, lg, Spinner } from "./kit";
+import { ApiError, Spinner } from "./kit";
+
+/** The assistant lives at /api/assistant/* (CRM-wide, not under /api/leadgen). */
+async function api<T = any>(path: string, body?: unknown): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/assistant${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      cache: "no-store",
+    });
+  } catch {
+    throw new ApiError(0, "Can't reach the server. Check your connection.");
+  }
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new ApiError(res.status, data?.error || `Something went wrong (${res.status}).`, data?.code);
+  return data as T;
+}
 
 /**
  * ChatGPT voice assistant — browser side.
@@ -90,7 +108,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const loadStatus = useCallback(() => {
-    lg<{ connected: boolean }>("/assistant/status").then((s) => setConnected(s.connected)).catch(() => setConnected(null));
+    api<{ connected: boolean }>("/status").then((s) => setConnected(s.connected)).catch(() => setConnected(null));
   }, []);
   useEffect(loadStatus, [loadStatus]);
 
@@ -210,7 +228,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       let failed = false;
       for (const a of actions) {
         try {
-          const r = await lg<{ message: string }>("/assistant/execute", { body: { tool: a.tool, args: a.args } });
+          const r = await api<{ message: string }>("/execute", { tool: a.tool, args: a.args });
           done.push(r.message);
         } catch (err) {
           failed = true;
@@ -269,8 +287,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         const history = [...live.current.messages, { id: 0, role: "user" as const, content: text }]
           .filter((m) => m.tone !== "error")
           .map((m) => ({ role: m.role, content: m.content }));
-        const res = await lg<{ reply: string; pending: Pending[]; ui: Array<{ navigate?: string }> }>("/assistant/chat", {
-          body: { messages: history, page: live.current.pathname },
+        const res = await api<{ reply: string; pending: Pending[]; ui: Array<{ navigate?: string }> }>("/chat", {
+          messages: history.slice(-8),
+          page: live.current.pathname,
         });
         setConnected(true);
         add("assistant", res.reply);
@@ -334,13 +353,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
 /* ───────────────────────── UI ───────────────────────── */
 
-const SUGGESTIONS = ["How many leads do I have?", "Reply to the follow-ups we received", "Show me the interested leads", "Launch a campaign for 30 sellers in Mansarovar"];
+const SUGGESTIONS = ["Aaj ke follow-ups kya hain?", "Noida mein 50 dentists ki leads chahiye", "Reply to the WhatsApp follow-ups", "Move Rahul to site visit tomorrow 11am", "How many units are available?", "Open prospects"];
 
 function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="rounded border border-line bg-panel-2 px-1.5 py-0.5 font-mono text-[10px] text-txt-faint">{children}</kbd>;
 }
 
-/** Floating button — opens the assistant from any Lead Generation page. */
+/** Floating button — opens the assistant from any CRM page. */
 export function AssistantLauncher() {
   const a = useAssistant();
   if (a.open) return null;
@@ -405,7 +424,7 @@ export function AssistantPanel() {
               <Icon name="PlugZap" size={19} />
             </span>
             <h3 className="mt-3 text-sm font-semibold">Switch the assistant on</h3>
-            <p className="mt-1 text-[13px] leading-relaxed text-txt-dim">Paste your ChatGPT (OpenAI) API key once under Lead Generation → Setup. After that you can just talk to it.</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-txt-dim">An admin pastes the ChatGPT (OpenAI) API key once under Lead Generation → Setup. After that you can just talk to it.</p>
             <Link href="/leadgen/setup" onClick={() => a.setOpen(false)} className="btn btn-primary mt-4 inline-flex">
               Go to Setup
             </Link>
@@ -415,7 +434,7 @@ export function AssistantPanel() {
             {!a.messages.some((m) => m.role === "user") && (
               <div>
                 <p className="text-[13px] leading-relaxed text-txt-dim">
-                  Hi! Press the mic and tell me what to do. I can look up leads, answer follow-ups, launch campaigns and open any page. I always ask before I send or change anything.
+                  Hi! Press the mic and tell me what to do — CRM leads, follow-ups, notes, bookings, inventory, lead generation, replies, or any page. I always ask before I change or send anything.
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {SUGGESTIONS.map((s) => (

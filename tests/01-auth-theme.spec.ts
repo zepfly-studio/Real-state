@@ -12,7 +12,7 @@ test.describe("Landing & auth", () => {
   for (const [role, email] of Object.entries(USERS)) {
     test(`login works for ${role}`, async ({ page }) => {
       await login(page, email);
-      await expect(page).toHaveURL(/\/dashboard/);
+      await expect(page).toHaveURL(/\/(dashboard|leadgen\/overview)/);
     });
   }
 

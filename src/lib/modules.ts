@@ -70,7 +70,7 @@ export const MODULES: ModuleDef[] = [
   { key: "super-admin", label: "Super Admin", href: "/super-admin", icon: "ServerCog", group: "ADMIN", roles: ["SUPER_ADMIN"] },
 ];
 
-export const MODULE_GROUPS: ModuleGroup[] = ["WORKSPACE", "LEAD GENERATION", "HEAVY TOOLS & AI", "ADMIN"];
+export const MODULE_GROUPS: ModuleGroup[] = ["LEAD GENERATION", "WORKSPACE", "HEAVY TOOLS & AI", "ADMIN"];
 
 export function moduleByKey(key: string): ModuleDef | undefined {
   return MODULES.find((m) => m.key === key);

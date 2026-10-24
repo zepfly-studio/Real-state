@@ -660,6 +660,8 @@ model LgCampaign {
   leadTarget     Int      @default(0)
   status         String   @default("PENDING") // PENDING | SCRAPING | ACTIVE | COMPLETED
   transcript     String?
+  plan           Json? // the AI search plan the person approved (keywords, titles, seniority, location, count)
+  filtered       Int      @default(0) // results dropped by the plan's filters (assistants, students, …)
   createdAt      DateTime @default(now())
 
   @@index([tenantId, createdAt])
@@ -670,9 +672,15 @@ model LgLead {
   tenantId    String
   campaignId  String?
   name        String?
-  phone       String
+  phone       String?
   email       String?
   address     String?
+  title       String?
+  company     String?
+  website     String?
+  linkedin    String?
+  city        String?
+  score       Int      @default(0) // seniority / fit priority from the search plan (higher = contact first)
   status      String   @default("SCRAPED") // SCRAPED | EMAIL_SENT | WHATSAPP_SENT | HOT_LEAD | UNQUALIFIED
   askingPrice Decimal? @db.Decimal(14, 2)
   timeline    String?

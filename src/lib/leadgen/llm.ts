@@ -31,6 +31,13 @@ export interface ToolCall {
 
 type Msg = Record<string, any>;
 
+/** Cost controls: short replies by default, JSON mode for structured answers. */
+export interface LlmOptions {
+  json?: boolean;
+  maxTokens?: number;
+  temperature?: number;
+}
+
 function friendly(status: number, body: any): string {
   const m = String(body?.error?.message ?? "").slice(0, 160);
   const code = String(body?.error?.code ?? "");
@@ -43,7 +50,9 @@ function friendly(status: number, body: any): string {
 
 export class Llm {
   messages: Msg[] = [];
-  constructor(private key: string, private system: string, private tools: ToolSpec[] = []) {}
+  /** Token usage of every call made by this client (for cost visibility). */
+  usage = { prompt: 0, completion: 0, cached: 0, calls: 0 };
+  constructor(private key: string, private system: string, private tools: ToolSpec[] = [], private opts: LlmOptions = {}) {}
 
   addUser(text: string) {
     this.messages.push({ role: "user", content: text });
@@ -64,7 +73,12 @@ export class Llm {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.key}` },
         body: JSON.stringify({
           model: LLM_MODEL,
+          // The system prompt + tool list come first and never change, so OpenAI's automatic
+          // prompt caching bills repeat requests at the discounted cached-input rate.
           messages: [{ role: "system", content: this.system }, ...this.messages],
+          max_tokens: this.opts.maxTokens ?? 350,
+          temperature: this.opts.temperature ?? 0.3,
+          ...(this.opts.json ? { response_format: { type: "json_object" } } : {}),
           ...(this.tools.length
             ? { tools: this.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.schema } })) }
             : {}),
@@ -78,6 +92,11 @@ export class Llm {
     const body: any = await res.json().catch(() => null);
     if (!res.ok) throw new LlmError(res.status === 401 ? 401 : 502, friendly(res.status, body));
 
+    const u = body?.usage ?? {};
+    this.usage.prompt += Number(u.prompt_tokens) || 0;
+    this.usage.completion += Number(u.completion_tokens) || 0;
+    this.usage.cached += Number(u.prompt_tokens_details?.cached_tokens) || 0;
+    this.usage.calls += 1;
     const msg = body?.choices?.[0]?.message;
     if (!msg) throw new LlmError(502, "ChatGPT sent an empty answer. Try again.");
     this.messages.push({ role: "assistant", content: msg.content ?? null, ...(msg.tool_calls ? { tool_calls: msg.tool_calls } : {}) });
@@ -96,10 +115,10 @@ export class Llm {
 }
 
 /** A client for this workspace, or throws LlmNotConnected. */
-export async function llmFor(tenantId: string, system: string, tools: ToolSpec[] = []): Promise<Llm> {
+export async function llmFor(tenantId: string, system: string, tools: ToolSpec[] = [], opts: LlmOptions = {}): Promise<Llm> {
   const key = await getIntegration(tenantId, "OPENAI");
   if (!key) throw new LlmNotConnected();
-  return new Llm(key, system, tools);
+  return new Llm(key, system, tools, opts);
 }
 
 /** Cheap check used by the Setup screen. */
@@ -110,7 +129,7 @@ export async function testLlm(tenantId: string): Promise<{ ok: boolean; message:
     return { ok: false, message: "That doesn't look like an OpenAI key (they start with sk-). Get one at platform.openai.com → API keys." };
   }
   try {
-    const g = new Llm(key, "Answer with exactly one word.");
+    const g = new Llm(key, "Answer with exactly one word.", [], { maxTokens: 5 });
     g.addUser("Say OK.");
     await g.step();
     return { ok: true, message: `Connected to ChatGPT (${LLM_MODEL}). The assistant is ready.` };

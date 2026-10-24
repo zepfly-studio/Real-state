@@ -38,7 +38,7 @@ export default async function LeadgenOverview() {
     { label: "Prospects found", value: m.leads, color: "var(--txt-faint)", hint: "Found and saved" },
     { label: "Emailed", value: m.emailed, color: "var(--blue)", hint: "Cold email queued in Smartlead" },
     { label: "Messaged", value: m.messaged, color: "var(--purple)", hint: "WhatsApp intro sent" },
-    { label: "Interested", value: m.interested, color: "var(--green)", hint: "Open to selling" },
+    { label: "Interested", value: m.interested, color: "var(--green)", hint: "Said yes" },
   ];
 
   return (
@@ -46,7 +46,7 @@ export default async function LeadgenOverview() {
       <AutoRefresh seconds={20} />
       <PageHeader
         title="Lead Generation"
-        subtitle="Find sellers, email and WhatsApp them, and let the AI answer — then move the interested ones into your CRM."
+        subtitle="Say who you need — the AI plans the search, finds decision makers, emails and WhatsApps them, answers replies, and moves the interested ones into your CRM."
         icon="Rocket"
         actions={<Link href="/leadgen/leads" className="btn"><Icon name="UserSearch" size={15} /> All prospects</Link>}
       />
@@ -172,7 +172,7 @@ export default async function LeadgenOverview() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-line text-left text-xs text-txt-faint font-semibold uppercase tracking-wide">
-                    <th className="py-2 pr-4">Campaign</th><th className="py-2 pr-4">Prospects</th><th className="py-2 pr-4">Interested</th><th className="py-2 pr-4">Status</th><th className="py-2">Started</th>
+                    <th className="py-2 pr-4">Campaign</th><th className="py-2 pr-4">Prospects</th><th className="py-2 pr-4">Filtered out</th><th className="py-2 pr-4">Interested</th><th className="py-2 pr-4">Status</th><th className="py-2">Started</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -180,6 +180,7 @@ export default async function LeadgenOverview() {
                     <tr key={c.id} className="border-b border-line/40">
                       <td className="py-2.5 pr-4"><div className="font-semibold">{c.name}</div><div className="text-xs text-txt-dim">{c.location || "—"}</div></td>
                       <td className="py-2.5 pr-4 tabular-nums">{c.leads}{c.target ? <span className="text-txt-faint"> / {c.target}</span> : null}</td>
+                      <td className="py-2.5 pr-4 tabular-nums text-txt-dim" title="Dropped by the plan (assistants, students, interns…)">{c.filtered}</td>
                       <td className="py-2.5 pr-4 tabular-nums">{c.interested}</td>
                       <td className="py-2.5 pr-4"><span className={`tag ${c.status === "ACTIVE" ? "bg-[rgba(62,199,141,.14)] text-green" : c.status === "FAILED" ? "bg-[rgba(240,85,106,.14)] text-red" : c.status === "PENDING" ? "bg-gold-soft text-gold-bright" : "bg-panel-2 text-txt-dim"}`}>{c.status === "PENDING" ? "Not started" : c.status === "SCRAPING" ? "Finding leads" : c.status === "ACTIVE" ? "Running" : c.status === "FAILED" ? "Failed" : "Completed"}</span></td>
                       <td className="py-2.5 text-txt-dim whitespace-nowrap">{timeAgo(c.createdAt)}</td>
@@ -195,7 +196,7 @@ export default async function LeadgenOverview() {
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="font-display font-bold">Ready to talk to</h3>
-              <p className="text-sm text-txt-dim mb-1">Sellers who said they&apos;re open to selling.</p>
+              <p className="text-sm text-txt-dim mb-1">Prospects who said they&apos;re interested.</p>
             </div>
             {ready.length > 0 && <Link href="/leadgen/leads?stage=HOT_LEAD" className="text-sm font-semibold text-gold-bright whitespace-nowrap">View all</Link>}
           </div>

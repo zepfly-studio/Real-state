@@ -8,9 +8,15 @@ export interface LgLeadRow {
   campaignId: string | null;
   campaignName: string | null;
   name: string | null;
-  phone: string;
+  phone: string | null;
   email: string | null;
   address: string | null;
+  title: string | null;
+  company: string | null;
+  website: string | null;
+  linkedin: string | null;
+  city: string | null;
+  score: number;
   status: string;
   askingPrice: number | null;
   timeline: string | null;
@@ -38,6 +44,12 @@ export async function listLeads(tenantId: string, opts: { campaignId?: string; l
     phone: r.phone,
     email: r.email,
     address: r.address,
+    title: r.title,
+    company: r.company,
+    website: r.website,
+    linkedin: r.linkedin,
+    city: r.city,
+    score: r.score,
     status: r.status,
     askingPrice: r.askingPrice == null ? null : Number(r.askingPrice),
     timeline: r.timeline,
@@ -126,6 +138,8 @@ export async function listCampaigns(tenantId: string) {
       status: c.status,
       leads: total,
       interested,
+      filtered: c.filtered,
+      target_people: (c.plan as any)?.target ?? null,
       createdAt: c.createdAt.toISOString(),
     };
   });

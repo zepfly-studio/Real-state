@@ -30,14 +30,14 @@ export const REACHED_WHATSAPP = ["WHATSAPP_SENT", "HOT_LEAD", "UNQUALIFIED"];
 
 export const EVENT_LABEL: Record<string, string> = {
   campaign_launched: "Campaign started",
-  lead_scraped: "New lead found",
+  lead_scraped: "New prospect",
   status_change: "Lead advanced",
   whatsapp_message: "Message",
   n8n_dispatch: "Automation started",
   n8n_dispatch_failed: "Automation not running",
   send_failed: "Message not delivered",
-  lead_search_done: "Sellers found",
-  lead_search_empty: "No sellers found",
+  lead_search_done: "Search finished",
+  lead_search_empty: "No results",
   lead_search_failed: "Lead search failed",
 };
 

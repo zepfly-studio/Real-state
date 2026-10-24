@@ -29,7 +29,8 @@ export default function LoginPage() {
     if (res?.error) {
       setError("Invalid credentials. Use a demo account below (password: password123).");
     } else {
-      router.push("/dashboard");
+      // Lead Generation is the home screen; roles without it are sent on to /dashboard by its layout.
+      router.push("/leadgen/overview");
       router.refresh();
     }
   }

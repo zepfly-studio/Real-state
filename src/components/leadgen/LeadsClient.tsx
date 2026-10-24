@@ -9,6 +9,13 @@ import { LG_STAGES, STAGE_META } from "@/lib/leadgen/stages";
 import { ApiError, Avatar, lg, Modal, Segmented, Spinner, StageBadge, Ago, timeAgoIso, useToast } from "./kit";
 
 const PAGE = 15;
+
+/** Seniority/fit score from the search plan → a plain label. */
+function Priority({ score }: { score: number }) {
+  if (score >= 70) return <span className="tag bg-[rgba(62,199,141,.14)] text-green">Decision maker</span>;
+  if (score >= 40) return <span className="tag bg-gold-soft text-gold-bright">Good fit</span>;
+  return <span className="text-xs text-txt-faint">—</span>;
+}
 const phoneKey = (p?: string | null) => String(p ?? "").replace(/\D/g, "").slice(-10);
 const inr = (n: number | null) => (n == null ? "—" : "₹" + Math.round(n).toLocaleString("en-IN"));
 
@@ -26,14 +33,16 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
 
   const searched = useMemo(() => {
     const s = q.trim().toLowerCase();
-    return s ? leads.filter((l) => [l.name, l.phone, l.email, l.address, l.campaignName].some((x) => String(x ?? "").toLowerCase().includes(s))) : leads;
+    return s ? leads.filter((l) => [l.name, l.phone, l.email, l.address, l.campaignName, l.title, l.company, l.city].some((x) => String(x ?? "").toLowerCase().includes(s))) : leads;
   }, [leads, q]);
   const counts = useMemo(() => {
     const c: Record<string, number> = {};
     for (const l of searched) c[l.status] = (c[l.status] ?? 0) + 1;
     return c;
   }, [searched]);
-  const rows = stage ? searched.filter((l) => l.status === stage) : searched;
+  const [byPriority, setByPriority] = useState(false);
+  const filteredRows = stage ? searched.filter((l) => l.status === stage) : searched;
+  const rows = byPriority ? [...filteredRows].sort((a, b) => b.score - a.score) : filteredRows;
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));
   const safe = Math.min(page, pages - 1);
   const slice = rows.slice(safe * PAGE, safe * PAGE + PAGE);
@@ -46,8 +55,8 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
   }
 
   function exportCsv() {
-    const head = ["Name", "Phone", "Email", "Property", "Stage", "Asking price", "Timeline", "Campaign", "Messages", "In CRM", "Found", "Last update"];
-    const body = rows.map((l) => [l.name, l.phone, l.email, l.address, STAGE_META[l.status as keyof typeof STAGE_META]?.label ?? l.status, l.askingPrice, l.timeline, l.campaignName, l.messageCount, l.crmLeadId ? "Yes" : "No", l.createdAt, l.updatedAt]);
+    const head = ["Name", "Title", "Company", "Phone", "Email", "LinkedIn", "Website", "City", "Address", "Priority", "Stage", "Asking price", "Timeline", "Campaign", "Messages", "In CRM", "Found", "Last update"];
+    const body = rows.map((l) => [l.name, l.title, l.company, l.phone, l.email, l.linkedin, l.website, l.city, l.address, l.score, STAGE_META[l.status as keyof typeof STAGE_META]?.label ?? l.status, l.askingPrice, l.timeline, l.campaignName, l.messageCount, l.crmLeadId ? "Yes" : "No", l.createdAt, l.updatedAt]);
     const csv = "﻿" + [head, ...body].map((r) => r.map(csvCell).join(",")).join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
@@ -70,6 +79,7 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
           <span className="absolute left-3 top-1/2 -translate-y-1/2 text-txt-faint"><Icon name="Search" size={15} /></span>
           <input className="input !pl-9" placeholder="Search name, phone, property…" value={q} onChange={(e) => (setQ(e.target.value), setPage(0))} aria-label="Search prospects" />
         </div>
+        <button className={`btn ${byPriority ? "!border-gold !text-gold-bright" : ""}`} aria-pressed={byPriority} onClick={() => setByPriority(!byPriority)}><Icon name="ArrowDownWideNarrow" size={15} /> Decision makers first</button>
         <button className="btn" onClick={exportCsv} disabled={!rows.length}><Icon name="Download" size={15} /> Export CSV</button>
       </div>
 
@@ -81,7 +91,7 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-xs text-txt-faint font-semibold uppercase tracking-wide">
-                  <th className="py-3 pl-5 pr-4">Prospect</th><th className="py-3 pr-4">Phone</th><th className="py-3 pr-4">Property</th><th className="py-3 pr-4">Stage</th><th className="py-3 pr-4">Asking</th><th className="py-3 pr-4">Chat</th><th className="py-3 pr-5 text-right">Updated</th>
+                  <th className="py-3 pl-5 pr-4">Prospect</th><th className="py-3 pr-4">Role &amp; company</th><th className="py-3 pr-4">Contact</th><th className="py-3 pr-4">Stage</th><th className="py-3 pr-4">Priority</th><th className="py-3 pr-4">Chat</th><th className="py-3 pr-5 text-right">Updated</th>
                 </tr>
               </thead>
               <tbody>
@@ -92,14 +102,14 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
                         <Avatar name={l.name} />
                         <div className="min-w-0">
                           <div className="font-semibold truncate">{l.name || "Unknown"}</div>
-                          <div className="text-xs text-txt-dim truncate">{l.email || l.campaignName || "—"}</div>
+                          <div className="text-xs text-txt-dim truncate">{l.city || l.campaignName || "—"}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="py-3 pr-4 tabular-nums whitespace-nowrap">{l.phone}</td>
-                    <td className="py-3 pr-4 max-w-[220px] truncate text-txt-dim">{l.address || "—"}</td>
+                    <td className="py-3 pr-4 max-w-[240px]"><div className="truncate">{l.title || "—"}</div><div className="text-xs text-txt-dim truncate">{l.company || l.address || ""}</div></td>
+                    <td className="py-3 pr-4 max-w-[220px]"><div className="tabular-nums whitespace-nowrap">{l.phone || "—"}</div><div className="text-xs text-txt-dim truncate">{l.email || ""}</div></td>
                     <td className="py-3 pr-4"><div className="flex items-center gap-1.5"><StageBadge value={l.status} />{l.crmLeadId && <span title="In the CRM" className="text-green"><Icon name="BadgeCheck" size={15} /></span>}</div></td>
-                    <td className="py-3 pr-4 tabular-nums">{inr(l.askingPrice)}</td>
+                    <td className="py-3 pr-4"><Priority score={l.score} /></td>
                     <td className="py-3 pr-4 tabular-nums text-txt-dim">{l.messageCount || "—"}</td>
                     <td className="py-3 pr-5 text-right text-txt-dim whitespace-nowrap"><Ago iso={l.updatedAt} /></td>
                   </tr>
@@ -135,10 +145,10 @@ function LeadDrawer({ lead, thread, onClose }: { lead: LgLeadRow | null; thread:
     try {
       if (kind === "crm") {
         const r = await lg<{ created: boolean }>(`/leads/${lead.id}/crm`, { method: "POST", body: {} });
-        toast.success(r.created ? "Added to the CRM" : "Linked to the existing CRM lead", lead.name || lead.phone);
+        toast.success(r.created ? "Added to the CRM" : "Linked to the existing CRM lead", lead.name || lead.phone || lead.email || "");
       } else {
         await lg(`/leads/${lead.id}/status`, { method: "PATCH", body: { status: kind } });
-        toast.success(kind === "HOT_LEAD" ? "Marked as interested" : "Marked as not interested", lead.name || lead.phone);
+        toast.success(kind === "HOT_LEAD" ? "Marked as interested" : "Marked as not interested", lead.name || lead.phone || lead.email || "");
       }
       router.refresh();
     } catch (e) {
@@ -165,7 +175,7 @@ function LeadDrawer({ lead, thread, onClose }: { lead: LgLeadRow | null; thread:
 
       <h4 className="section-label mb-2">Contact</h4>
       <ul className="card divide-y divide-line-soft mb-5 text-sm">
-        {[["Phone", lead.phone, "Phone"], ["Email", lead.email, "Mail"], ["Property", lead.address, "MapPin"]].map(([k, v, ic]) => (
+        {[["Title", [lead.title, lead.company].filter(Boolean).join(" · "), "BriefcaseBusiness"], ["Phone", lead.phone, "Phone"], ["Email", lead.email, "Mail"], ["LinkedIn", lead.linkedin, "Linkedin"], ["Website", lead.website, "Globe"], ["Address", lead.address || lead.city, "MapPin"]].filter(([, v], i) => i < 3 || v).map(([k, v, ic]) => (
           <li key={k as string} className="flex items-center gap-3 px-4 py-2.5"><span className="text-txt-faint"><Icon name={ic as string} size={15} /></span><span className="w-16 text-xs text-txt-faint">{k}</span><span className="font-medium truncate">{(v as string) || "—"}</span></li>
         ))}
       </ul>

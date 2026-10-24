@@ -1,0 +1,120 @@
+import { llmFor, LlmNotConnected } from "./llm";
+import { regexBrief } from "./intent";
+
+/**
+ * Search plan: what the AI turns a spoken brief into before anything is scraped.
+ *
+ *   "Noida mein 50 dentists chahiye"  →
+ *   { target: "Dentists", keywords: [dentist, dental clinic, orthodontist, …],
+ *     include_titles: [owner, founder, director, chief dental surgeon, …],
+ *     exclude_titles: [assistant, intern, student, trainee, receptionist, …],
+ *     seniority: [owner, founder, partner, director, head], location: "Noida, Uttar Pradesh, India", lead_count: 50 }
+ *
+ * The person reviews/edits it, n8n receives it, and the CRM applies the title filters
+ * again to every result — so quality holds whichever scraper (Apify actor) is used.
+ */
+export interface SearchPlan {
+  target: string;
+  keywords: string[];
+  include_titles: string[];
+  exclude_titles: string[];
+  seniority: string[];
+  location: string;
+  lead_count: number;
+  notes: string;
+}
+
+export const DEFAULT_EXCLUDE = [
+  "assistant", "intern", "internship", "student", "trainee", "fresher", "junior", "receptionist",
+  "volunteer", "apprentice", "aspiring", "looking for", "job seeker", "teacher assistant",
+];
+export const DEFAULT_SENIORITY = ["owner", "founder", "co-founder", "partner", "director", "managing director", "ceo", "head", "principal", "chief"];
+
+/** Common professions → search keywords and the people who decide. Used when ChatGPT isn't connected. */
+const PROFESSIONS: Array<{ match: RegExp; target: string; keywords: string[]; titles: string[] }> = [
+  { match: /dentist|dental|orthodont/i, target: "Dentists", keywords: ["dentist", "dental clinic", "dental surgeon", "orthodontist", "endodontist", "dental hospital", "implantologist"], titles: ["owner", "founder", "chief dental surgeon", "consultant dental surgeon", "orthodontist", "clinic director", "partner"] },
+  { match: /doctor|physician|clinic|hospital|medical/i, target: "Doctors & clinics", keywords: ["doctor", "physician", "clinic", "polyclinic", "hospital", "medical practitioner", "specialist clinic"], titles: ["owner", "founder", "medical director", "consultant", "chief medical officer", "director", "partner"] },
+  { match: /ca\b|chartered accountant|accountant|tax/i, target: "Chartered accountants", keywords: ["chartered accountant", "CA firm", "tax consultant", "audit firm", "accounting firm"], titles: ["partner", "founder", "proprietor", "managing partner", "director"] },
+  { match: /lawyer|advocate|legal|law firm/i, target: "Lawyers", keywords: ["advocate", "law firm", "legal consultant", "corporate lawyer", "attorney"], titles: ["partner", "founder", "managing partner", "senior advocate", "principal"] },
+  { match: /builder|developer|real estate|realtor|broker|property/i, target: "Real estate businesses", keywords: ["real estate developer", "builder", "real estate agency", "property consultant", "realtor"], titles: ["owner", "founder", "director", "managing director", "ceo", "partner"] },
+  { match: /restaurant|cafe|hotel|hospitality/i, target: "Restaurants & hotels", keywords: ["restaurant", "cafe", "hotel", "banquet", "cloud kitchen"], titles: ["owner", "founder", "director", "general manager", "partner"] },
+  { match: /school|coaching|institute|education/i, target: "Schools & institutes", keywords: ["school", "coaching institute", "academy", "education centre", "training institute"], titles: ["founder", "director", "principal", "owner", "chairman"] },
+  { match: /gym|fitness|salon|spa/i, target: "Gyms & salons", keywords: ["gym", "fitness centre", "salon", "spa", "wellness studio"], titles: ["owner", "founder", "director", "partner"] },
+  { match: /software|it company|saas|tech/i, target: "IT companies", keywords: ["software company", "IT services", "SaaS", "app development", "web development"], titles: ["founder", "co-founder", "ceo", "cto", "director", "managing director"] },
+  { match: /marketing|agency|advertis/i, target: "Marketing agencies", keywords: ["digital marketing agency", "advertising agency", "branding agency", "performance marketing"], titles: ["founder", "co-founder", "ceo", "director", "managing partner"] },
+  { match: /seller|owner|landlord|home ?owner/i, target: "Property owners", keywords: ["property owner", "house for sale", "plot owner", "flat owner"], titles: [] },
+];
+
+const clean = (xs: unknown, max = 12): string[] =>
+  Array.from(new Set((Array.isArray(xs) ? xs : []).map((x) => String(x ?? "").trim().toLowerCase()).filter((x) => x && x.length <= 60))).slice(0, max);
+
+export function normalizePlan(p: Record<string, any>): SearchPlan {
+  const n = Math.round(Number(p.lead_count));
+  return {
+    target: String(p.target ?? "").trim().slice(0, 80) || "Leads",
+    keywords: clean(p.keywords),
+    include_titles: clean(p.include_titles),
+    exclude_titles: clean(p.exclude_titles?.length ? p.exclude_titles : DEFAULT_EXCLUDE, 20),
+    seniority: clean(p.seniority?.length ? p.seniority : DEFAULT_SENIORITY),
+    location: String(p.location ?? "").trim().slice(0, 120),
+    lead_count: Number.isFinite(n) && n > 0 ? Math.min(n, 5000) : 0,
+    notes: String(p.notes ?? "").trim().slice(0, 240),
+  };
+}
+
+/** No-AI plan: profession dictionary + default decision-maker filters. */
+export function heuristicPlan(brief: string): SearchPlan {
+  const { location, leadCount } = regexBrief(brief);
+  const prof = PROFESSIONS.find((x) => x.match.test(brief));
+  const words = brief.replace(/\d+/g, " ").replace(/\b(find|get|need|chahiye|dhundo|mujhe|leads?|in|ke|ki|ka|mein|me|main|from|se|for|of|the|a|an|and|lao|do)\b/gi, " ").replace(/\s+/g, " ").trim();
+  return normalizePlan({
+    target: prof?.target ?? (words.slice(0, 60) || "Leads"),
+    keywords: prof?.keywords ?? (words ? [words.toLowerCase()] : []),
+    include_titles: prof?.titles ?? DEFAULT_SENIORITY,
+    exclude_titles: DEFAULT_EXCLUDE,
+    seniority: DEFAULT_SENIORITY,
+    location,
+    lead_count: leadCount,
+    notes: prof ? "" : "Basic reader — connect ChatGPT for smarter keywords.",
+  });
+}
+
+const SYSTEM =
+  "You plan B2B/B2C lead searches for an Indian real-estate sales team. Turn the user's request into a search plan for a people/business scraper. " +
+  "Expand the profession into 5-8 precise search keywords (synonyms, specialities, business types). " +
+  "List 4-8 job titles of DECISION MAKERS for that field (owners, founders, partners, directors, senior consultants). " +
+  "List titles to EXCLUDE (assistants, interns, students, trainees, juniors, receptionists and similar non-decision roles). " +
+  "Give seniority levels to prioritise. Expand the location to 'City, State, Country' (assume India). " +
+  'Reply with ONLY JSON: {"target":string,"keywords":[string],"include_titles":[string],"exclude_titles":[string],"seniority":[string],"location":string,"lead_count":number,"notes":string}. ' +
+  "lead_count = number requested (0 if none). notes = one short line of anything the user should confirm, else empty.";
+
+/** ChatGPT plan (one small JSON call), else the heuristic plan. Never throws. */
+export async function buildPlan(tenantId: string, brief: string): Promise<{ plan: SearchPlan; readBy: "ChatGPT" | "basic reader" }> {
+  try {
+    const llm = await llmFor(tenantId, SYSTEM, [], { json: true, maxTokens: 400 });
+    llm.addUser(brief.slice(0, 500));
+    const { text } = await llm.step();
+    const data = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] ?? "{}");
+    const plan = normalizePlan(data);
+    // Keep the decision-maker defaults if the model returned nothing for them.
+    if (!plan.keywords.length) return { plan: heuristicPlan(brief), readBy: "basic reader" };
+    return { plan, readBy: "ChatGPT" };
+  } catch (e) {
+    if (!(e instanceof LlmNotConnected)) console.warn("[leadgen] plan via ChatGPT failed, using basic reader");
+    return { plan: heuristicPlan(brief), readBy: "basic reader" };
+  }
+}
+
+/** Score one scraped person against the plan. null = filtered out. */
+export function scoreLead(plan: SearchPlan | null, title?: string | null): number | null {
+  const t = String(title ?? "").toLowerCase();
+  if (!t) return 0; // businesses / people without a title pass with neutral priority
+  if (!plan) return 0;
+  const has = (w: string) => new RegExp(`(^|[^a-z])${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z]|$)`, "i").test(t);
+  if (plan.exclude_titles.some(has)) return null;
+  let score = 10;
+  if (plan.include_titles.some(has)) score += 30;
+  if (plan.seniority.some(has)) score += 40;
+  if (/\b(owner|founder|ceo|managing director|chairman|proprietor)\b/i.test(t)) score += 20;
+  return Math.min(score, 100);
+}
