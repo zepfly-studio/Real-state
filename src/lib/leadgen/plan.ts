@@ -17,6 +17,7 @@ import { matchIndustry, splitLocation } from "./apify";
 export interface SearchPlan {
   target: string;
   keywords: string[];
+  role_titles: string[]; // what practitioners/owners of this profession are called (searched) — e.g. dentist, orthodontist
   include_titles: string[];
   exclude_titles: string[];
   seniority: string[];
@@ -33,15 +34,15 @@ export const DEFAULT_EXCLUDE = [
 export const DEFAULT_SENIORITY = ["owner", "founder", "co-founder", "partner", "director", "managing director", "ceo", "head", "principal", "chief"];
 
 /** Common professions → search keywords and the people who decide. Used when ChatGPT isn't connected. */
-const PROFESSIONS: Array<{ match: RegExp; target: string; keywords: string[]; titles: string[]; industries?: string[] }> = [
-  { match: /dentist|dental|orthodont/i, target: "Dentists", keywords: ["dentist", "dental clinic", "dental surgeon", "orthodontist", "endodontist", "dental hospital", "implantologist"], titles: ["owner", "founder", "chief dental surgeon", "consultant dental surgeon", "orthodontist", "clinic director", "partner"], industries: ["Medical Practice", "Hospital & Health Care"] },
-  { match: /doctor|physician|clinic|hospital|medical/i, target: "Doctors & clinics", keywords: ["doctor", "physician", "clinic", "polyclinic", "hospital", "medical practitioner", "specialist clinic"], titles: ["owner", "founder", "medical director", "consultant", "chief medical officer", "director", "partner"], industries: ["Medical Practice", "Hospital & Health Care"] },
-  { match: /ca\b|chartered accountant|accountant|tax/i, target: "Chartered accountants", keywords: ["chartered accountant", "CA firm", "tax consultant", "audit firm", "accounting firm"], titles: ["partner", "founder", "proprietor", "managing partner", "director"], industries: ["Accounting"] },
-  { match: /lawyer|advocate|legal|law firm/i, target: "Lawyers", keywords: ["advocate", "law firm", "legal consultant", "corporate lawyer", "attorney"], titles: ["partner", "founder", "managing partner", "senior advocate", "principal"], industries: ["Law Practice", "Legal Services"] },
-  { match: /builder|developer|real estate|realtor|broker|property/i, target: "Real estate businesses", keywords: ["real estate developer", "builder", "real estate agency", "property consultant", "realtor"], titles: ["owner", "founder", "director", "managing director", "ceo", "partner"], industries: ["Real Estate", "Construction"] },
-  { match: /restaurant|cafe|hotel|hospitality/i, target: "Restaurants & hotels", keywords: ["restaurant", "cafe", "hotel", "banquet", "cloud kitchen"], titles: ["owner", "founder", "director", "general manager", "partner"], industries: ["Restaurants", "Hospitality"] },
-  { match: /school|coaching|institute|education/i, target: "Schools & institutes", keywords: ["school", "coaching institute", "academy", "education centre", "training institute"], titles: ["founder", "director", "principal", "owner", "chairman"], industries: ["Education Management", "Primary/Secondary Education"] },
-  { match: /gym|fitness|salon|spa/i, target: "Gyms & salons", keywords: ["gym", "fitness centre", "salon", "spa", "wellness studio"], titles: ["owner", "founder", "director", "partner"], industries: ["Health, Wellness & Fitness"] },
+const PROFESSIONS: Array<{ match: RegExp; target: string; keywords: string[]; titles: string[]; roles?: string[]; industries?: string[] }> = [
+  { match: /dentist|dental|orthodont/i, target: "Dentists", keywords: ["dentist", "dental clinic", "dental surgeon", "orthodontist", "endodontist", "dental hospital", "implantologist"], titles: ["owner", "founder", "chief dental surgeon", "consultant dental surgeon", "orthodontist", "clinic director", "partner"], roles: ["dentist", "dental surgeon", "orthodontist", "endodontist", "periodontist", "prosthodontist", "implantologist", "chief dental surgeon"], industries: ["Medical Practice", "Hospital & Health Care"] },
+  { match: /doctor|physician|clinic|hospital|medical/i, target: "Doctors & clinics", keywords: ["doctor", "physician", "clinic", "polyclinic", "hospital", "medical practitioner", "specialist clinic"], titles: ["owner", "founder", "medical director", "consultant", "chief medical officer", "director", "partner"], roles: ["doctor", "physician", "consultant physician", "general physician", "surgeon", "medical director", "clinic owner"], industries: ["Medical Practice", "Hospital & Health Care"] },
+  { match: /ca\b|chartered accountant|accountant|tax/i, target: "Chartered accountants", keywords: ["chartered accountant", "CA firm", "tax consultant", "audit firm", "accounting firm"], titles: ["partner", "founder", "proprietor", "managing partner", "director"], roles: ["chartered accountant", "CA", "tax consultant", "auditor", "partner chartered accountant"], industries: ["Accounting"] },
+  { match: /lawyer|advocate|legal|law firm/i, target: "Lawyers", keywords: ["advocate", "law firm", "legal consultant", "corporate lawyer", "attorney"], titles: ["partner", "founder", "managing partner", "senior advocate", "principal"], roles: ["advocate", "lawyer", "senior advocate", "attorney", "legal counsel", "managing partner"], industries: ["Law Practice", "Legal Services"] },
+  { match: /builder|developer|real estate|realtor|broker|property/i, target: "Real estate businesses", keywords: ["real estate developer", "builder", "real estate agency", "property consultant", "realtor"], titles: ["owner", "founder", "director", "managing director", "ceo", "partner"], roles: ["real estate developer", "builder", "property consultant", "real estate broker", "director real estate"], industries: ["Real Estate", "Construction"] },
+  { match: /restaurant|cafe|hotel|hospitality/i, target: "Restaurants & hotels", keywords: ["restaurant", "cafe", "hotel", "banquet", "cloud kitchen"], titles: ["owner", "founder", "director", "general manager", "partner"], roles: ["restaurant owner", "hotel owner", "general manager hotel", "cafe owner", "banquet owner"], industries: ["Restaurants", "Hospitality"] },
+  { match: /school|coaching|institute|education/i, target: "Schools & institutes", keywords: ["school", "coaching institute", "academy", "education centre", "training institute"], titles: ["founder", "director", "principal", "owner", "chairman"], roles: ["principal", "school director", "institute director", "school founder", "coaching founder"], industries: ["Education Management", "Primary/Secondary Education"] },
+  { match: /gym|fitness|salon|spa/i, target: "Gyms & salons", keywords: ["gym", "fitness centre", "salon", "spa", "wellness studio"], titles: ["owner", "founder", "director", "partner"], roles: ["gym owner", "salon owner", "fitness center owner", "spa owner", "wellness center founder"], industries: ["Health, Wellness & Fitness"] },
   { match: /software|it company|saas|tech/i, target: "IT companies", keywords: ["software company", "IT services", "SaaS", "app development", "web development"], titles: ["founder", "co-founder", "ceo", "cto", "director", "managing director"], industries: ["Information Technology & Services", "Computer Software"] },
   { match: /marketing|agency|advertis/i, target: "Marketing agencies", keywords: ["digital marketing agency", "advertising agency", "branding agency", "performance marketing"], titles: ["founder", "co-founder", "ceo", "director", "managing partner"], industries: ["Marketing & Advertising"] },
   { match: /seller|owner|landlord|home ?owner/i, target: "Property owners", keywords: ["property owner", "house for sale", "plot owner", "flat owner"], titles: [] },
@@ -55,6 +56,7 @@ export function normalizePlan(p: Record<string, any>): SearchPlan {
   return {
     target: String(p.target ?? "").trim().slice(0, 80) || "Leads",
     keywords: clean(p.keywords),
+    role_titles: clean(p.role_titles),
     include_titles: clean(p.include_titles),
     exclude_titles: clean(p.exclude_titles?.length ? p.exclude_titles : DEFAULT_EXCLUDE, 20),
     seniority: clean(p.seniority?.length ? p.seniority : DEFAULT_SENIORITY),
@@ -73,6 +75,7 @@ export function heuristicPlan(brief: string): SearchPlan {
   return normalizePlan({
     target: prof?.target ?? (words.slice(0, 60) || "Leads"),
     keywords: prof?.keywords ?? (words ? [words.toLowerCase()] : []),
+    role_titles: prof?.roles ?? [],
     include_titles: prof?.titles ?? DEFAULT_SENIORITY,
     exclude_titles: DEFAULT_EXCLUDE,
     seniority: DEFAULT_SENIORITY,
@@ -86,10 +89,11 @@ export function heuristicPlan(brief: string): SearchPlan {
 const SYSTEM =
   "You plan B2B/B2C lead searches for an Indian real-estate sales team. Turn the user's request into a search plan for a people/business scraper. " +
   "Expand the profession into 5-8 precise search keywords (synonyms, specialities, business types). " +
-  "List 4-8 job titles of DECISION MAKERS for that field (owners, founders, partners, directors, senior consultants). " +
+  "List 5-9 role_titles: the exact job titles people in this profession carry on LinkedIn (a dental request -> dentist, dental surgeon, orthodontist, endodontist, periodontist; an accountant request -> chartered accountant, auditor). These are what the scraper searches. "
+  + "List 4-8 include_titles: DECISION MAKER titles (owners, founders, partners, directors, senior consultants) used to rank people. " +
   "List titles to EXCLUDE (assistants, interns, students, trainees, juniors, receptionists and similar non-decision roles). " +
   "Give seniority levels to prioritise. Give 1-3 LinkedIn industry names for these businesses (e.g. Medical Practice, Hospital & Health Care, Real Estate, Law Practice, Accounting). Expand the location to 'City, State, Country' (assume India). " +
-  'Reply with ONLY JSON: {"target":string,"keywords":[string],"include_titles":[string],"exclude_titles":[string],"seniority":[string],"industries":[string],"location":string,"lead_count":number,"notes":string}. ' +
+  'Reply with ONLY JSON: {"target":string,"keywords":[string],"include_titles":[string],"exclude_titles":[string],"seniority":[string],"industries":[string],"role_titles":[string],"location":string,"lead_count":number,"notes":string}. ' +
   "lead_count = number requested (0 if none). notes = one short line of anything the user should confirm, else empty.";
 
 /** ChatGPT plan (one small JSON call), else the heuristic plan. Never throws. */

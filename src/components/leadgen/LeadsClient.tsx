@@ -40,7 +40,7 @@ export function LeadsClient({ leads, threads, initialStage }: { leads: LgLeadRow
     for (const l of searched) c[l.status] = (c[l.status] ?? 0) + 1;
     return c;
   }, [searched]);
-  const [byPriority, setByPriority] = useState(false);
+  const [byPriority, setByPriority] = useState(true);
   const filteredRows = stage ? searched.filter((l) => l.status === stage) : searched;
   const rows = byPriority ? [...filteredRows].sort((a, b) => b.score - a.score) : filteredRows;
   const pages = Math.max(1, Math.ceil(rows.length / PAGE));

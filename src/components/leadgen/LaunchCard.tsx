@@ -3,10 +3,12 @@ import { KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import { ApiError, lg, Spinner, useToast } from "./kit";
+import { fetchCount, splitLocation, USD_PER_RESULT } from "@/lib/leadgen/apify";
 
 interface Plan {
   target: string;
   keywords: string[];
+  role_titles: string[];
   include_titles: string[];
   exclude_titles: string[];
   seniority: string[];
@@ -204,22 +206,25 @@ export function LaunchCard({ automationReady }: { automationReady: boolean }) {
             </label>
           </div>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            <Chips label="Search keywords" tone="gold" items={plan.keywords} onChange={(v) => setPlan({ ...plan, keywords: v })} placeholder="add keyword…" />
-            <Chips label="Decision makers (job titles)" tone="green" items={plan.include_titles} onChange={(v) => setPlan({ ...plan, include_titles: v })} placeholder="add title…" />
+            <Chips label="Job titles searched on LinkedIn" tone="gold" items={plan.role_titles} onChange={(v) => setPlan({ ...plan, role_titles: v })} placeholder="add job title…" />
+            <Chips label="Keywords (used to check each result)" tone="gold" items={plan.keywords} onChange={(v) => setPlan({ ...plan, keywords: v })} placeholder="add keyword…" />
+            <Chips label="Decision makers (ranked first)" tone="green" items={plan.include_titles} onChange={(v) => setPlan({ ...plan, include_titles: v })} placeholder="add title…" />
             <Chips label="Prioritise seniority" tone="green" items={plan.seniority} onChange={(v) => setPlan({ ...plan, seniority: v })} placeholder="add level…" />
             <Chips label="Exclude (never import)" tone="red" items={plan.exclude_titles} onChange={(v) => setPlan({ ...plan, exclude_titles: v })} placeholder="add title to exclude…" />
             <Chips label="Industries (LinkedIn names, e.g. Medical Practice)" tone="gold" items={plan.industries} onChange={(v) => setPlan({ ...plan, industries: v })} placeholder="add industry…" />
           </div>
-          {plan.lead_count > 0 && (
-            <p className="mt-3 text-xs text-txt-dim">
-              <Icon name="Coins" size={12} className="inline -mt-0.5" /> Apify will check about <b>{Math.min(2000, Math.max(100, plan.lead_count * 5))}</b> profiles
-              (≈ ${(Math.min(2000, Math.max(100, plan.lead_count * 5)) * 0.0021).toFixed(2)}) and the CRM keeps the best {plan.lead_count} that match.
-            </p>
-          )}
+          {plan.lead_count > 0 && (() => {
+            const profiles = fetchCount(plan.lead_count, Boolean(splitLocation(plan.location).city));
+            return (
+              <p className="mt-3 text-xs text-txt-dim">
+                <Icon name="Coins" size={12} className="inline -mt-0.5" /> Apify will check about <b>{profiles}</b> profiles (≈ ${(profiles * USD_PER_RESULT).toFixed(2)}) and the CRM keeps the best {plan.lead_count} that match.
+              </p>
+            );
+          })()}
           {plan.notes && <p className="mt-3 text-xs text-txt-dim"><Icon name="Info" size={12} className="inline -mt-0.5" /> {plan.notes}</p>}
           <p className="mt-3 text-xs text-txt-dim">
             On launch n8n searches with this plan, and the CRM drops anyone matching an excluded title and ranks owners, founders and directors first.
-            Then: email (Smartlead) → WhatsApp intro 2 hours later → the AI answers replies.
+            If email (Smartlead) and WhatsApp are connected they are contacted next; otherwise the leads are simply collected here for you.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <button className="btn btn-primary" onClick={launch} disabled={busy !== null || Boolean(missing)}>

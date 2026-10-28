@@ -10,9 +10,13 @@ export const ACTOR = "olympus~b2b-leads-finder";
 /** Measured on the agency's account: ~$0.21 per 100 results. The actor's minimum is 100 per run. */
 export const USD_PER_RESULT = 0.0021;
 
-/** Results the CRM filters away (other cities, non-decision makers, other professions) need headroom. */
-export function fetchCount(leadCount: number): number {
-  return Math.min(2000, Math.max(100, Math.round(leadCount * 5)));
+/**
+ * How many profiles to ask the actor for. It filters by state, not city, and by title, not business type, so the CRM
+ * discards most results (measured: ~18% of dental-title results in Uttar Pradesh were in Noida). A named city needs
+ * more head-room than a whole state. Min 100 (actor limit), max 2000.
+ */
+export function fetchCount(leadCount: number, hasCity = true): number {
+  return Math.min(2000, Math.max(100, Math.round(leadCount * (hasCity ? 7 : 3))));
 }
 
 /** The actor's industry list (LinkedIn industries). Plans may only use these names. */
@@ -218,18 +222,24 @@ const CITY_STATE: Record<string, string> = {
 };
 
 export function toActorInput(plan: SearchPlan) {
-  const { state, country } = splitLocation(plan.location);
+  const { city, state, country } = splitLocation(plan.location);
   const seniority = Array.from(new Set(plan.seniority.flatMap((s) => SENIORITY.filter(([re]) => re.test(s)).map(([, v]) => v))));
   const industry = plan.industries.map(matchIndustry).filter(Boolean) as string[];
   const title = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
   return {
-    personTitle: plan.include_titles.map(title),
-    excludeTitle: plan.exclude_titles.map(title),
-    ...(seniority.length ? { seniority } : {}),
+    // Profession titles drive the search; if the plan has none, fall back to the decision-maker titles.
+    personTitle: (plan.role_titles.length ? plan.role_titles : plan.include_titles).map(title),
+    // Only the core exclusions go to the actor (long lists shrink its results); the CRM applies the full list again.
+    excludeTitle: plan.exclude_titles.filter((t) => /assistant|intern|student|trainee|receptionist|fresher/.test(t)).slice(0, 6).map(title),
+    // Seniority is NOT sent when searching by profession titles: combined with them the actor returns almost nothing
+    // (measured 7 of 140). The CRM ranks by seniority instead.
+    ...(!plan.role_titles.length && seniority.length ? { seniority } : {}),
     personCountry: [country],
     // The actor filters by state (it has no city filter); the CRM keeps only the requested city afterwards.
     ...(state ? { personState: [state] } : {}),
-    ...(industry.length ? { industry } : { webKeywords: plan.keywords.slice(0, 5) }),
-    maxResults: fetchCount(plan.lead_count),
+    // Profession titles already pin the field (many clinics are filed under 'Other'), so the industry filter is only
+    // used for generic searches. The actor's keyword filter is deliberately never used: with it, results collapse to ~0.
+    ...(!plan.role_titles.length && industry.length ? { industry } : {}),
+    maxResults: fetchCount(plan.lead_count, Boolean(city)),
   };
 }

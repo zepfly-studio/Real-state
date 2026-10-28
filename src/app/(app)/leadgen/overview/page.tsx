@@ -182,7 +182,7 @@ export default async function LeadgenOverview() {
                       <td className="py-2.5 pr-4 tabular-nums">{c.leads}{c.target ? <span className="text-txt-faint"> / {c.target}</span> : null}</td>
                       <td className="py-2.5 pr-4 tabular-nums text-txt-dim" title="Dropped by the plan (assistants, students, interns…)">{c.filtered}</td>
                       <td className="py-2.5 pr-4 tabular-nums">{c.interested}</td>
-                      <td className="py-2.5 pr-4"><span className={`tag ${c.status === "ACTIVE" ? "bg-[rgba(62,199,141,.14)] text-green" : c.status === "FAILED" ? "bg-[rgba(240,85,106,.14)] text-red" : c.status === "PENDING" ? "bg-gold-soft text-gold-bright" : "bg-panel-2 text-txt-dim"}`}>{c.status === "PENDING" ? "Not started" : c.status === "SCRAPING" ? "Finding leads" : c.status === "ACTIVE" ? "Running" : c.status === "FAILED" ? "Failed" : "Completed"}</span></td>
+                      <td className="py-2.5 pr-4"><span className={`tag ${c.status === "ACTIVE" ? "bg-[rgba(62,199,141,.14)] text-green" : c.status === "FAILED" ? "bg-[rgba(240,85,106,.14)] text-red" : c.status === "PENDING" ? "bg-gold-soft text-gold-bright" : "bg-panel-2 text-txt-dim"}`}>{c.status === "PENDING" ? "Not started" : c.status === "SCRAPING" ? "Finding leads" : c.status === "ACTIVE" ? "Running" : c.status === "FAILED" ? "Failed" : c.leads > 0 ? "Leads ready" : "Completed"}</span></td>
                       <td className="py-2.5 text-txt-dim whitespace-nowrap">{timeAgo(c.createdAt)}</td>
                     </tr>
                   ))}

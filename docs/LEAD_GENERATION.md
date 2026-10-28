@@ -30,6 +30,7 @@ Sidebar group **LEAD GENERATION** (first in the sidebar; staff land on its Overv
 
 *"Noida mein 50 dentists chahiye"* becomes:
 
+- **Profession titles (sent to the scraper):** dentist, dental surgeon, orthodontist… — the actor filters by job title and state, not by business type or city
 - **Keywords:** dentist, dental clinic, orthodontist, dental surgeon, endodontist, implantologist…
 - **Decision makers:** owner, founder, chief dental surgeon, clinic director, partner…
 - **Prioritise seniority:** owner, founder, director, partner…
@@ -90,7 +91,7 @@ Then press **Create token** on the Setup page. That workspace token is what n8n 
 
    | Node(s) | Credential type | Value |
    |---|---|---|
-   | Apify Scrape Leads | Custom Auth / Bearer | your Apify token; replace `YOUR_APIFY_ACTOR_ID` in the URL. The body sends the plan as `searchQueries`, `jobTitles`, `excludeJobTitles`, `seniority`, `location`, `maxItems` — rename the keys if your actor uses other input names |
+   | Apify Scrape Leads | Custom Auth / Bearer | your Apify token. The actor is `olympus/b2b-leads-finder` (≈ $0.0021 per result, minimum 100 per run); the CRM sends the plan already converted to its input (`apify_input`), so the node only forwards it |
    | Smartlead Cold Email | Custom Auth (templated) | `{"qs":{"api_key":"{{api_key}}"}}` with your Smartlead key (and replace `YOUR_CAMPAIGN_ID`) |
    | WhatsApp Intro Message, WhatsApp Send Reply | Header Auth | header `apikey` = your Evolution key |
    | Chat Model | OpenAI | your OpenAI key (model `gpt-4o-mini`) |
@@ -107,7 +108,7 @@ n8n ⇄ CRM endpoints (header `X-Leadgen-Token`):
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/leadgen/sync` | events: `new_lead`, `status_change`, `whatsapp_message`, `send_failed`, `campaign_scraped`, `campaign_failed` |
+| POST | `/api/leadgen/sync` | events: `ingest_leads` (a whole batch of scraper results), `new_lead`, `status_change`, `whatsapp_message`, `send_failed`, `campaign_scraped`, `campaign_failed` |
 | GET | `/api/leadgen/n8n/leads?status=SCRAPED&campaign_id=…` | leads to contact next |
 | GET | `/api/leadgen/n8n/leads?phone=…` | `{found, lead}` — gate for the WhatsApp bot |
 
@@ -125,3 +126,18 @@ It never edits or deletes CRM records.
 
 `SCRAPED` (New) → `EMAIL_SENT` (Emailed) → `WHATSAPP_SENT` (Messaged) → `HOT_LEAD` (Interested) | `UNQUALIFIED` (Not interested).
 There is no calling stage in this module.
+
+## How results are filtered and ranked
+
+1. The CRM asks the scraper for more rows than needed (×7 when a city is named, ×3 otherwise, min 100, max 2000), because
+   the actor can only filter by state and job title.
+2. n8n sends **all** rows in a single `ingest_leads` request. The CRM drops excluded titles, other cities and other
+   kinds of business, ranks the rest (decision makers first, then rows with an email or phone), skips duplicates and
+   saves exactly the number asked for — in one transaction, so the count can never overshoot.
+3. The campaign shows *Leads ready* with "kept X of Y" in the activity feed.
+
+**Outreach is optional.** If Smartlead / WhatsApp are not connected, the CRM tells n8n (`outreach` flags) and the
+workflow stops after saving: the leads are still generated and shown in Prospects, nothing is sent.
+
+Known data limits: personal phone numbers are rarely returned (email is the main channel) and owners/founders are a
+small share of results — the ranking puts them first but cannot invent them.

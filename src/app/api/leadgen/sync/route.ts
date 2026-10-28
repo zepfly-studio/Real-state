@@ -4,6 +4,7 @@ import { lgTokenTenant } from "@/lib/leadgen/guard";
 import { findLead, logEvent, logMessage } from "@/lib/leadgen/db";
 import { LG_STAGES, phoneKey } from "@/lib/leadgen/stages";
 import { cityMatches, isRelevant, normalizePlan, scoreLead } from "@/lib/leadgen/plan";
+import { ingestLeads } from "@/lib/leadgen/ingest";
 
 /**
  * POST /api/leadgen/sync — the n8n workflow reports what it did.
@@ -30,6 +31,16 @@ export async function POST(req: Request) {
   }
 
   try {
+    // A whole batch of scraper results at once: filtered, ranked and trimmed to the number asked for, atomically.
+    if (kind === "ingest_leads") {
+      if (!campaignId) return NextResponse.json({ error: "ingest_leads requires a campaign_id from this workspace" }, { status: 400 });
+      const rows = (Array.isArray(d.leads) ? d.leads : []).filter((x: unknown) => x && typeof x === "object").slice(0, 3000);
+      const r = await ingestLeads(tenantId, campaignId, rows);
+      const outreachOff = d.outreach === false;
+      await prisma.lgCampaign.updateMany({ where: { id: campaignId, tenantId, status: { in: ["PENDING", "SCRAPING", "ACTIVE", "COMPLETED"] } }, data: { status: outreachOff || r.kept === 0 ? "COMPLETED" : "ACTIVE" } });
+      return NextResponse.json({ ok: true, ...r });
+    }
+
     if (kind === "new_lead") {
       const str = (v: unknown, n: number) => (v == null || String(v).trim() === "" ? undefined : String(v).trim().slice(0, n));
       const email = str(d.email, 200)?.toLowerCase();
@@ -119,7 +130,8 @@ export async function POST(req: Request) {
       const c = await prisma.lgCampaign.findFirst({ where: { id: campaignId, tenantId } });
       // n8n can report both outcomes for one run; a failed search must stay failed.
       if (c?.status === "FAILED") return NextResponse.json({ ok: true, ignored: "campaign already failed" });
-      await prisma.lgCampaign.update({ where: { id: campaignId }, data: { status: count > 0 ? "ACTIVE" : "COMPLETED" } });
+      const outreachOff = d.outreach === false; // nothing is connected to contact them: collecting is the whole job
+      await prisma.lgCampaign.update({ where: { id: campaignId }, data: { status: count > 0 && !outreachOff ? "ACTIVE" : "COMPLETED" } });
       await logEvent(tenantId, count > 0 ? "lead_search_done" : "lead_search_empty",
         count > 0 ? `${c?.name}: search returned ${count} result${count === 1 ? "" : "s"} (filtering by the plan)` : `${c?.name}: no results${c?.targetLocation ? ` in ${c.targetLocation}` : ""}`, { campaignId });
       return NextResponse.json({ ok: true, count });
